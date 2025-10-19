@@ -1,0 +1,334 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#
+# UTILISATION DE LA LOI VISCOPLASTIQUE DE NORTON
+# ELEMENTS QUAD8 + SEG3 POUR LE CHARGEMENT
+# .....................................................................
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"))
+
+MAYA = LIRE_MAILLAGE(FORMAT="ASTER")
+
+MODEL = AFFE_MODELE(
+    MAILLAGE=MAYA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="D_PLAN")
+)
+
+ACIER = DEFI_MATERIAU(
+    ELAS=_F(E=178600.0, NU=0.3), LEMAITRE=_F(N=9.7, UN_SUR_K=0.00077519, UN_SUR_M=0.0)
+)
+
+MATER = AFFE_MATERIAU(MAILLAGE=MAYA, AFFE=_F(TOUT="OUI", MATER=ACIER))
+
+TRAC_FO = DEFI_FONCTION(
+    NOM_PARA="INST",
+    PROL_DROITE="EXCLU",
+    PROL_GAUCHE="EXCLU",
+    VALE=(
+        0.0,
+        0.0,
+        30.0,
+        300.0,
+        3630.0,
+        300.0,
+        3660.0,
+        300.0,
+        7260.0,
+        300.0,
+        7320.0,
+        -300.0,
+        7350.0,
+        -300.0,
+        10950.0,
+        -300.0,
+        10980.0,
+        -300.0,
+        11010.0,
+        0.0,
+    ),
+)
+
+CISA_FO = DEFI_FONCTION(
+    NOM_PARA="INST",
+    PROL_DROITE="EXCLU",
+    PROL_GAUCHE="EXCLU",
+    VALE=(
+        0.0,
+        0.0,
+        30.0,
+        0.0,
+        3630.0,
+        0.0,
+        3660.0,
+        300.0,
+        7260.0,
+        300.0,
+        7320.0,
+        300.0,
+        7350.0,
+        0.0,
+        10950.0,
+        0.0,
+        10980.0,
+        -300.0,
+        11010.0,
+        -300.0,
+    ),
+)
+
+TRAC = AFFE_CHAR_MECA(MODELE=MODEL, FORCE_CONTOUR=_F(GROUP_MA="DROITE", FX=1.0))
+
+CISA = AFFE_CHAR_MECA(MODELE=MODEL, FORCE_CONTOUR=_F(GROUP_MA="HAUT", FY=1.0))
+
+CONDLIM = AFFE_CHAR_MECA(
+    MODELE=MODEL,
+    DDL_IMPO=(
+        _F(GROUP_NO="NO1", DX=0.0, DY=0.0),
+        _F(GROUP_NO="NO2", DY=0.0),
+        _F(GROUP_NO="NO3", DY=0.0),
+        _F(GROUP_NO="NO7", DX=0.0),
+        _F(GROUP_NO="NO8", DX=0.0),
+    ),
+)
+
+CAT = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=30.0, NOMBRE=30),
+        _F(JUSQU_A=3630.0, NOMBRE=10),
+        _F(JUSQU_A=3660.0, NOMBRE=10),
+        _F(JUSQU_A=7260.0, NOMBRE=10),
+        _F(JUSQU_A=7320.0, NOMBRE=100),
+        _F(JUSQU_A=7350.0, NOMBRE=20),
+        _F(JUSQU_A=10950.0, NOMBRE=20),
+        _F(JUSQU_A=10980.0, NOMBRE=20),
+        _F(JUSQU_A=11010.0, NOMBRE=20),
+    ),
+)
+
+CALCNL = STAT_NON_LINE(
+    MODELE=MODEL,
+    CHAM_MATER=MATER,
+    COMPORTEMENT=_F(PARM_THETA=0.5, RELATION="LEMAITRE", ITER_INTE_MAXI=1000, DEFORMATION="PETIT"),
+    INCREMENT=_F(LIST_INST=CAT),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    CONVERGENCE=_F(RESI_GLOB_RELA=1.0e-6, ITER_GLOB_MAXI=50),
+    EXCIT=(
+        _F(CHARGE=CONDLIM),
+        _F(CHARGE=TRAC, FONC_MULT=TRAC_FO),
+        _F(CHARGE=CISA, FONC_MULT=CISA_FO),
+    ),
+    RECH_LINEAIRE=_F(ITER_LINE_MAXI=3),
+)
+
+CALCNL = CALC_CHAMP(
+    reuse=CALCNL, CONTRAINTE=("SIGM_ELNO"), VARI_INTERNE=("VARI_ELNO"), RESULTAT=CALCNL
+)
+
+CALCNL = CALC_CHAMP(reuse=CALCNL, RESULTAT=CALCNL, DEFORMATION=("EPSP_ELGA"))
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=30,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=6.09576034e-07,
+            VALE_REFE=6.1249999999999996e-07,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=30,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=-4.66174771e-07,
+            VALE_REFE=-4.6839999999999999e-07,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=40,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=7.05666823e-04,
+            VALE_REFE=7.0560000000000002e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=40,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=-5.72018771e-04,
+            VALE_REFE=-5.7200000000000003e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=50,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=7.06197534e-04,
+            VALE_REFE=7.0609999999999998e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=50,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=-5.72447200e-04,
+            VALE_REFE=-5.7240000000000004e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=60,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=7.06218202e-04,
+            VALE_REFE=7.0609999999999998e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=60,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=-5.72426531e-04,
+            VALE_REFE=-5.7240000000000004e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=160,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=-2.40107761e-05,
+            VALE_REFE=-2.4430000000000002e-05,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=160,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=1.37380067e-04,
+            VALE_REFE=1.3770000000000001e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=180,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=-7.76535322e-04,
+            VALE_REFE=-7.7879999999999996e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=180,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=8.40132384e-04,
+            VALE_REFE=8.4230000000000004e-4,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=240,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=-1.53216012e-03,
+            VALE_REFE=-1.534e-3,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=240,
+            POINT=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="EPSP_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=1.43017519e-03,
+            VALE_REFE=1.4319999999999999e-3,
+            REFERENCE="NON_DEFINI",
+            CRITERE="RELATIF",
+            PRECISION=0.02,
+            GROUP_MA="MA1",
+        ),
+    )
+)
+
+FIN()
+#

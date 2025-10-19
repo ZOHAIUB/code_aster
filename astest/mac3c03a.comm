@@ -1,0 +1,44 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), IMPR_MACRO="NON")
+
+MA1 = LIRE_MAILLAGE(FORMAT="MED", UNITE=20)
+
+DATAMAC1 = LIRE_TABLE(UNITE=38, FORMAT="LIBRE", SEPARATEUR="\t")
+
+RESU_C1 = CALC_MAC3COEUR(
+    TYPE_COEUR="TEST",
+    TABLE_N=DATAMAC1,
+    MAILLAGE_N=MA1,
+    DEFORMATION=_F(UNITE_THYC=32, NIVE_FLUENCE=3),
+)
+
+DATAMAC2 = LIRE_TABLE(UNITE=38, FORMAT="LIBRE", SEPARATEUR="\t")
+
+INI_C2 = PERM_MAC3COEUR(
+    TYPE_COEUR_N="TEST",
+    TYPE_COEUR_NP1="TEST",
+    RESU_N=RESU_C1,
+    TABLE_N=DATAMAC1,
+    TABLE_NP1=DATAMAC2,
+    MAILLAGE_NP1=MA1,
+)
+
+FIN()

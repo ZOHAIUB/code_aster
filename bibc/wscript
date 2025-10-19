@@ -1,0 +1,238 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+import os.path as osp
+import sys
+
+from waflib import Configure, TaskGen, Utils
+
+
+def options(self):
+    self.load("compiler_c")
+    group = self.get_option_group("code_aster options")
+    group.add_option(
+        "-e",
+        "--build-executable",
+        dest="embed_aster",
+        default=False,
+        action="store_true",
+        help="build aster as an executable: it is an alias for --embed-aster",
+    )
+    group.add_option(
+        "--embed-aster",
+        dest="embed_aster",
+        default=True,
+        action="store_true",
+        help="embed all aster components within a python interpreter",
+    )
+    group.add_option(
+        "--shared-aster",
+        dest="embed_aster",
+        default=True,
+        action="store_false",
+        help="build each aster component as a shared python module",
+    )
+
+
+def configure(self):
+    self.load("compiler_c")
+    # preserve symbols in the dyn table for stdcalls
+    if self.env.ASTER_PLATFORM_MINGW:
+        self.add_linkflags(["-Wl,--export-all-symbols"])
+    elif sys.platform != "darwin":
+        self.add_linkflags("-Wl,--export-dynamic")
+    else:
+        # '--export-dynamic' is '-export_dynamic' in OS X linker
+        # http://stackoverflow.com/questions/21279036/what-is-clangs-equivalent-to-rdynamic-gcc-flag
+        self.add_linkflags("-Wl,-export_dynamic")
+
+    # prefer memory usage over speed
+    self.add_linkflags("-Wl,--no-keep-memory")
+    # this option removes the warning about executable stack because of nested functions
+    # https://sourceware.org/bugzilla/show_bug.cgi?id=29072
+    self.add_linkflags("-Wl,--no-warn-execstack")
+
+    self.add_linkflags("-Wl,--no-as-needed", dest="LINKFLAGS_LIBASTER")
+    self.add_linkflags("-Wl,-flto=auto", dest="LINKFLAGS")
+    # seems incompatible with subroutines like zerofr that takes function as argument (test ssnv168f)
+    # self.add_linkflags("-Wl,-z,noexecstack", dest="LINKFLAGS")
+
+    incpath = osp.join(self.path.get_src().abspath(), "include")
+    self.env.append_value("INCLUDES_BIBC", incpath)
+
+    if "ifort" in self.env.FC_NAME.lower():
+        self.add_linkflags("-nofor-main", dest="LINKFLAGS_fcprogram")
+    self.check_c_compiler_flags()
+
+
+@Configure.conf
+def check_bibc_depends(self):
+    """check dependencies of bibc"""
+    # never in static
+    self.check_cc(uselib_store="SYS", lib="dl")
+
+
+@Configure.conf
+def add_linkflags(self, linkflags, dest="LINKFLAGS"):
+    """Add linkflags if they are supported by the active compiler."""
+    if not linkflags:
+        return
+    linkflags = Utils.to_list(linkflags)
+
+    self.start_msg("Checking for linkflags")
+    supportedFlags = []
+    for flags in linkflags:
+        flags = Utils.to_list(flags)
+        if self.check_cxx(linkflags=["-Werror"] + flags, mandatory=False):
+            supportedFlags += flags
+    self.end_msg(" ".join(supportedFlags))
+    self.env.append_unique(dest, supportedFlags)
+
+
+PYMAIN = "supervis/python.c"
+
+
+def build(self):
+    # The build is splitted in 3 stages:
+    # - compilation of C source files
+    # - build of the shared lib (libaster)
+    get_srcs = self.path.get_src().ant_glob
+    env = self.all_envs[self.variant]
+
+    build_libbibc(self, env)
+    build_libaster(self, env)
+
+    self.add_group()
+    # install headers
+    self.install_files(env.ASTERINCLUDEDIR, get_srcs("include/*.h"))
+    # install generated headers (C + fortran)
+    bld = self.path.get_bld().parent
+    config_includes = bld.ant_glob("aster*_config.h", quiet=True)
+    self.install_files(env.ASTERINCLUDEDIR, config_includes)
+
+
+@TaskGen.extension(".h")
+def process_h(self, node):
+    pass
+
+
+def build_libbibc(self, env):
+    use = [
+        "PYEXT",
+        "NUMPY",
+        "BIBCXX",
+        "HDF5",
+        "MED",
+        "METIS",
+        "PARMETIS",
+        # "GKLIB",
+        "SCOTCH",
+        "PETSC",
+    ]
+    get_srcs = self.path.get_src().ant_glob
+    # compile *.c
+    self(
+        features=("c cstlib" if self.env.ASTER_PLATFORM_MINGW else "c cshlib"),
+        name="asterbibc",
+        source=get_srcs("**/*.c", excl=[PYMAIN]),
+        target="bibc",
+        rpath="$ORIGIN",
+        defines="",
+        use=use,
+        env=env.derive(),
+        install_path=env.ASTERLIBDIR,
+    )
+
+
+def build_libaster(self, env):
+    use = ["LIBASTER", "asterbibfor", "asterbibfor_ext", "asterbibc", "asterbibcxx", "astergc"]
+    if env.BUILD_MFRONT:
+        use.append("astermfront")
+    # {bibfor, bibc, bibcxx}/*.o
+    if self.env.ASTER_PLATFORM_MINGW:
+        # fix circular dependencies between bibc.a and bibfor.a
+        env = env.derive()
+        env.detach()
+        env.append_value("STLIB_MARKER", "-Wl,--start-group")
+        env.append_value("SHLIB_MARKER", "-Wl,--end-group")
+    self(
+        features="cxx cxxshlib",
+        name="asterlib",
+        target="aster",
+        rpath="$ORIGIN",
+        source=PYMAIN,
+        defines="_MAIN_=_unused_main_",  #'ASTER_WITHOUT_PYMOD',
+        env=env.derive(),
+        use=use,
+        install_path=env.ASTERLIBDIR,
+    )
+    extlib = ".so"
+    mods = ["aster", "aster_core", "aster_fonctions", "med_aster"]
+    libaster = "libaster.so"
+    if env.ASTER_PLATFORM_MINGW:
+        extlib = ".pyd"
+        mods.extend(["libaster", "libAsterGC"])
+        libaster = "aster.dll"
+    for submodule in mods:
+        src = osp.join(env.ASTERLIBDIR, submodule + extlib)
+        self.symlink_as(src, libaster)
+
+
+@Configure.conf
+def check_c_compiler_flags(self):
+    self.check_c_compiler_options("-fPIC")
+    # needs more tests (size and build time)
+    # self.check_c_compiler_options("-fno-lto")
+    self.start_msg("C compiler flags")
+    self.end_msg(self.env["CFLAGS"])
+
+
+@Configure.conf
+def check_c_compiler_options(self, options):
+    """Check C compiler options"""
+    if type(options) not in (list, tuple):
+        options = [options]
+    self.start_msg("Checking for C option")
+    if self.check_cc(cflags=options, mandatory=False):
+        self.env.append_unique("CFLAGS", options)
+        self.end_msg("yes (%s)" % " ".join(options))
+    else:
+        self.end_msg("no (%s)" % " ".join(options), "YELLOW")
+
+
+@Configure.conf
+def check_optimization_cflags(self):
+    self.setenv("debug")
+    self.start_msg("Setting C debug flags")
+    self.remove_optflags("CFLAGS")
+    flags = ["-g", "-O0"] + Utils.to_list(self.env["CFLAGS_ASTER_DEBUG"])
+    if self.options.enable_coverage:
+        flags.append("--coverage")
+        self.add_linkflags("--coverage")
+    if self.options.enable_asan:
+        flags.extend(["-fsanitize=address", "-fno-omit-frame-pointer"])
+        self.add_linkflags(["-fsanitize=address", "-fno-omit-frame-pointer"])
+    self.env.append_unique("CFLAGS", flags)
+    self.end_msg(flags)
+
+    self.setenv("release")
+    self.start_msg("Setting C optimization flags")
+    flags = ["-O2"]
+    self.env.append_unique("CFLAGS", flags)
+    self.end_msg(flags)

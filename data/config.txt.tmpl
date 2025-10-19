@@ -1,0 +1,31 @@
+# Configuration file created by waf using data/wscript
+# Libraries, compilers are not relevant
+#
+# orbinitref: tells to asrun that the option `--ORBInitRef=value` is supported
+#
+BUILD_TYPE     | env     | -     | waf nocopy nosuperv noresu use_numthreads orbinitref
+ENV_SH         | env     | -     | profile.sh
+ADDMEM         | memory  | -     | 0
+DEFS           | defined | -     | @DEFINES@
+#
+BIN_NODBG      | bin     | -     | @PYTHON@
+BIN_DBG        | bin     | -     | @PYTHON@
+#
+# for as_run --make_shared...
+F90            | compil  | -     | @FC@
+OPTF90_O       | compil  | -     | @FCFLAGS@
+#
+# for as_run --messages, --get, --show..., and astout
+SRCFOR         | src     | -     | @SRC@/bibfor
+SRCC           | src     | -     | @SRC@/bibc
+SRCPY          | src     | -     | @ASTERLIBDIR@/code_aster/Utilities
+SRCCATA        | src     | -     | @SRC@/catalo
+SRCCAPY        | src     | -     | @SRC@/catapy
+@srctest@
+SRCTEST        | src     | -     | $ASTER_VERSION_DIR/tests_data
+SRCMAT         | src     | -     | @SRC@/../data/materiau
+SRCHIST        | src     | -     | @SRC@/histor
+#
+REPOUT         | exec    | -     | $ASTER_ROOT/outils
+REPMAT         | exec    | -     | $ASTER_VERSION_DIR/materiau
+REPDEX         | exec    | -     | $ASTER_VERSION_DIR/datg

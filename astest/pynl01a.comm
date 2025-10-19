@@ -1,0 +1,493 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+from code_aster.Commands import *
+from code_aster import CA
+
+DEBUT(CODE="OUI", IGNORE_ALARM=("MECANONLINE5_37", "MECANONLINE2_37"), DEBUG=_F(SDVERI="OUI"))
+
+# IGNORE_ALARME: ARRET='NON' AUTORISE POUR TEST INTEGRATION LOI DE COMPORTEMENT
+
+# =========================================================
+#          DEFINITION DE L'ETUDE
+# =========================================================
+
+test = CA.TestCase()
+
+MA = LIRE_MAILLAGE(FORMAT="GMSH", UNITE=19)
+
+MA = DEFI_GROUP(
+    reuse=MA,
+    MAILLAGE=MA,
+    CREA_GROUP_MA=(
+        _F(NOM="BORDINF", GROUP_MA="GM3"),
+        _F(NOM="BORDSUP", GROUP_MA="GM2"),
+        _F(NOM="CUBE", GROUP_MA="GM1"),
+    ),
+)
+
+MO = AFFE_MODELE(
+    MAILLAGE=MA,
+    AFFE=_F(GROUP_MA=("CUBE", "BORDINF", "BORDSUP"), PHENOMENE="MECANIQUE", MODELISATION="3D"),
+)
+
+
+MAT = DEFI_MATERIAU(
+    ELAS=_F(E=210000.0, ALPHA=1.0e-6, NU=0.3), ECRO_LINE=_F(D_SIGM_EPSI=1930.0, SY=181.0)
+)
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MAT))
+
+CHARGE = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=(
+        _F(GROUP_MA="BORDINF", DY=0.0, DX=0.0, DZ=0.0),
+        _F(GROUP_MA="BORDSUP", DX=1.0, DY=1.0, DZ=1.0),
+    ),
+)
+
+RAMPE = DEFI_FONCTION(NOM_PARA="INST", VALE=(0.0, 0.0, 1.0, 1))
+
+LIST = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=1.0, NOMBRE=1))
+
+
+# =========================================================
+#          CREATION DES OBJETS SOLUTIONS
+# =========================================================
+
+SIGP = CREA_CHAMP(
+    TYPE_CHAM="ELGA_SIEF_R",
+    OPERATION="AFFE",
+    MODELE=MO,
+    AFFE=_F(
+        TOUT="OUI",
+        NOM_CMP=("SIXX", "SIYY", "SIZZ", "SIXY", "SIYZ", "SIXZ"),
+        VALE=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ),
+)
+
+
+VARIP = CREA_CHAMP(
+    OPERATION="AFFE",
+    TYPE_CHAM="ELGA_VARI_R",
+    MODELE=MO,
+    AFFE=_F(TOUT="OUI", NOM_CMP=("V1", "V2"), VALE=(0.0, 0.0)),
+)
+
+NU = NUME_DDL(MODELE=MO, CHARGE=CHARGE)
+
+# Déplacement nul avec Lagrange !
+U = CA.FieldOnNodesReal(NU)
+DU = CA.FieldOnNodesReal(NU)
+
+# =========================================================
+#               PREDICTION ELASTIQUE
+# =========================================================
+
+M_EL = CALC_MATR_ELEM(OPTION="RIGI_MECA", MODELE=MO, CHAM_MATER=CHMAT, CHARGE=CHARGE)
+
+
+CHAR_EL = CALC_VECT_ELEM(OPTION="CHAR_MECA", CHARGE=CHARGE)
+
+CHAR = ASSE_VECTEUR(VECT_ELEM=CHAR_EL, NUME_DDL=NU)
+
+MATAS = ASSE_MATRICE(MATR_ELEM=M_EL, NUME_DDL=NU)
+
+MATAS = FACTORISER(reuse=MATAS, MATR_ASSE=MATAS)
+
+DU = RESOUDRE(MATR=MATAS, CHAM_NO=CHAR)
+
+DV = RESOUDRE(MATR=MATAS, CHAM_NO=CHAR)
+
+
+# =========================================================
+#           INTEGRATION DE LA LOI DE COMPT
+# =========================================================
+
+
+CONT = CALCUL(
+    OPTION=("COMPORTEMENT", "FORC_INTE_ELEM", "MATR_TANG_ELEM", "FORC_NODA_ELEM"),
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    INCREMENT=_F(LIST_INST=LIST, NUME_ORDRE=1),
+    EXCIT=_F(CHARGE=CHARGE),
+    DEPL=U,
+    INCR_DEPL=DU,
+    SIGM=SIGP,
+    VARI=VARIP,
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INFO=2,
+)
+
+MATR = EXTR_TABLE(
+    TYPE_RESU="MATR_ELEM_DEPL_R",
+    TABLE=CONT,
+    NOM_PARA="NOM_SD",
+    FILTRE=_F(NOM_PARA="NOM_OBJET", VALE_K="MATR_TANG_ELEM"),
+)
+
+SIGM = EXTR_TABLE(
+    TYPE_RESU="CHAM_ELEM",
+    TABLE=CONT,
+    NOM_PARA="NOM_SD",
+    FILTRE=_F(NOM_PARA="NOM_OBJET", VALE_K="SIEF_ELGA"),
+)
+
+VARI = EXTR_TABLE(
+    TYPE_RESU="CHAM_ELEM",
+    TABLE=CONT,
+    NOM_PARA="NOM_SD",
+    FILTRE=_F(NOM_PARA="NOM_OBJET", VALE_K="VARI_ELGA"),
+)
+
+test.assertIsNotNone(MATR.getModel(), msg="MATR")
+
+F_EL = EXTR_TABLE(
+    TYPE_RESU="VECT_ELEM_DEPL_R",
+    TABLE=CONT,
+    NOM_PARA="NOM_SD",
+    FILTRE=_F(NOM_PARA="NOM_OBJET", VALE_K="FORC_INTE_ELEM"),
+)
+
+
+iret = EXTR_TABLE(
+    TYPE_RESU="ENTIER",
+    TABLE=CONT,
+    NOM_PARA="VALE_I",
+    FILTRE=_F(NOM_PARA="NOM_OBJET", VALE_K="CODE_RETOUR_INTE"),
+)
+
+test.assertEqual(iret, 0)
+
+FORC = EXTR_TABLE(
+    TYPE_RESU="VECT_ELEM_DEPL_R",
+    TABLE=CONT,
+    NOM_PARA="NOM_SD",
+    FILTRE=_F(NOM_PARA="NOM_OBJET", VALE_K="FORC_NODA_ELEM"),
+)
+
+# just to check model dependency
+res = CALCUL(
+    __use_namedtuple__=True,
+    OPTION=("COMPORTEMENT", "FORC_INTE_ELEM", "MATR_TANG_ELEM", "FORC_NODA_ELEM"),
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    INCREMENT=_F(LIST_INST=LIST, NUME_ORDRE=1),
+    EXCIT=_F(CHARGE=CHARGE),
+    DEPL=U,
+    INCR_DEPL=DU,
+    SIGM=SIGP,
+    VARI=VARIP,
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INFO=2,
+)
+
+test.assertIsNotNone(res.MATR_TANG_ELEM.getModel(), msg="MATR_TANG_ELEM")
+
+
+FORCAS = ASSE_VECTEUR(VECT_ELEM=FORC, NUME_DDL=NU)
+
+
+MATAS2 = ASSE_MATRICE(MATR_ELEM=MATR, NUME_DDL=NU)
+
+
+MATAS2 = FACTORISER(reuse=MATAS2, MATR_ASSE=MATAS2)
+
+
+DX = RESOUDRE(MATR=MATAS2, CHAM_NO=CHAR)
+
+# =========================================================
+#          DETERMINATION DE LA REFERENCE
+# =========================================================
+
+
+# ON SIMULE LA PREDICTION ELASTIQUE
+PRED = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=_F(CHARGE=CHARGE),
+    COMPORTEMENT=_F(RELATION="ELAS"),
+    INCREMENT=_F(LIST_INST=LIST),
+    CONVERGENCE=_F(RESI_GLOB_MAXI=1.0e12),
+)
+
+# ON INTEGRE LA LOI DE COMPORTEMENT
+CALC = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=_F(CHARGE=CHARGE),
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INCREMENT=_F(LIST_INST=LIST),
+    NEWTON=_F(PREDICTION="DEPL_CALCULE", EVOL_NOLI=PRED),
+    ####
+    # NE PAS FAIRE D'ITERATIONS
+    ####
+    CONVERGENCE=_F(ITER_GLOB_MAXI=0, ARRET="NON"),
+)
+
+# ON EXTRAIT LES CHAMPS A TESTER
+SIG_REF = CREA_CHAMP(
+    OPERATION="EXTR", TYPE_CHAM="ELGA_SIEF_R", NOM_CHAM="SIEF_ELGA", RESULTAT=CALC, INST=1.0
+)
+
+VAR_REF = CREA_CHAMP(
+    OPERATION="EXTR", TYPE_CHAM="ELGA_VARI_R", NOM_CHAM="VARI_ELGA", RESULTAT=CALC, INST=1.0
+)
+
+CALC = CALC_CHAMP(reuse=CALC, TOUT_ORDRE="OUI", TOUT="OUI", FORCE="FORC_NODA", RESULTAT=CALC)
+
+
+FOR_REF = CREA_CHAMP(
+    OPERATION="EXTR", TYPE_CHAM="NOEU_DEPL_R", NOM_CHAM="FORC_NODA", RESULTAT=CALC, INST=1.0
+)
+
+
+# =========================================================
+#            REALISATION DES TESTS
+# =========================================================
+
+# DIF_SIG = SIG_REF - SIGM
+DIF_SIG = CREA_CHAMP(
+    OPERATION="ASSE",
+    MODELE=MO,
+    TYPE_CHAM="ELGA_SIEF_R",
+    ASSE=(
+        _F(CHAM_GD=SIG_REF, TOUT="OUI", CUMUL="OUI", COEF_R=1.0),
+        _F(CHAM_GD=SIGM, TOUT="OUI", CUMUL="OUI", COEF_R=-1.0),
+    ),
+)
+
+IMPR_RESU(FORMAT="GMSH", RESU=_F(CHAM_GD=DIF_SIG))
+
+
+# DIF_VAR = VAR_REF - VARI
+DIF_VAR = CREA_CHAMP(
+    OPERATION="ASSE",
+    MODELE=MO,
+    TYPE_CHAM="ELGA_VARI_R",
+    ASSE=(
+        _F(CHAM_GD=VAR_REF, TOUT="OUI", CUMUL="OUI", COEF_R=1.0),
+        _F(CHAM_GD=VARI, TOUT="OUI", CUMUL="OUI", COEF_R=-1.0),
+    ),
+)
+
+print(FORCAS.getDescription().getName(), FOR_REF.getDescription().getName())
+DIF_FOR = FORCAS - FOR_REF
+
+
+TEST_RESU(
+    CHAM_ELEM=(
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MIN",
+            CHAM_GD=DIF_SIG,
+            VALE_CALC=5.82076609e-11,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MAX",
+            CHAM_GD=DIF_SIG,
+            VALE_CALC=5.83619325e-14,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MIN",
+            CHAM_GD=DIF_VAR,
+            VALE_CALC=2.22044605e-16,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MAX",
+            CHAM_GD=DIF_VAR,
+            VALE_CALC=0.00000000e00,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+    )
+)
+
+TEST_RESU(
+    CHAM_NO=(
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MIN",
+            CHAM_GD=DIF_FOR,
+            VALE_CALC=1.45519152e-11,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MAX",
+            CHAM_GD=DIF_FOR,
+            VALE_CALC=0.00000000e00,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+    )
+)
+
+#
+# ==============     VALIDATION DE : CALCUL/TABLE   ====================
+#
+
+LIST2 = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=1.0, NOMBRE=2))
+
+
+CONT = CALCUL(
+    reuse=CONT,
+    OPTION=("COMPORTEMENT", "FORC_INTE_ELEM", "MATR_TANG_ELEM", "FORC_NODA_ELEM"),
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    INCREMENT=_F(LIST_INST=LIST2, NUME_ORDRE=2),
+    EXCIT=_F(CHARGE=CHARGE),
+    TABLE=CONT,
+    DEPL=U,
+    INCR_DEPL=DU,
+    SIGM=SIGP,
+    VARI=VARIP,
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INFO=2,
+)
+
+
+SIGM3 = EXTR_TABLE(
+    TYPE_RESU="CHAM_ELEM",
+    TABLE=CONT,
+    NOM_PARA="NOM_SD",
+    FILTRE=(_F(NOM_PARA="NOM_OBJET", VALE_K="SIEF_ELGA"), _F(NOM_PARA="NUME_ORDRE", VALE_I=2)),
+)
+
+PRED3 = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=_F(CHARGE=CHARGE),
+    COMPORTEMENT=_F(RELATION="ELAS"),
+    INCREMENT=_F(LIST_INST=LIST2),
+    CONVERGENCE=_F(RESI_GLOB_MAXI=1.0e12),
+)
+
+CALC3 = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=_F(CHARGE=CHARGE),
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INCREMENT=_F(LIST_INST=LIST2),
+    NEWTON=_F(PREDICTION="DEPL_CALCULE", EVOL_NOLI=PRED3),
+    ####
+    # NE PAS FAIRE D'ITERATIONS
+    ####
+    CONVERGENCE=_F(ITER_GLOB_MAXI=0, ARRET="NON"),
+)
+
+
+SIG_REF3 = CREA_CHAMP(
+    OPERATION="EXTR", TYPE_CHAM="ELGA_SIEF_R", NOM_CHAM="SIEF_ELGA", RESULTAT=CALC3, INST=0.5
+)
+
+DIF_SIG3 = CREA_CHAMP(
+    OPERATION="ASSE",
+    MODELE=MO,
+    TYPE_CHAM="ELGA_SIEF_R",
+    ASSE=(
+        _F(CHAM_GD=SIG_REF3, TOUT="OUI", CUMUL="OUI", COEF_R=1.0),
+        _F(CHAM_GD=SIGM3, TOUT="OUI", CUMUL="OUI", COEF_R=-1.0),
+    ),
+)
+
+TEST_RESU(
+    CHAM_ELEM=(
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MIN",
+            CHAM_GD=DIF_SIG3,
+            VALE_CALC=5.82076609e-11,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+        _F(
+            CRITERE="ABSOLU",
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=1.0e-08,
+            TYPE_TEST="MAX",
+            CHAM_GD=DIF_SIG3,
+            VALE_CALC=5.83619325e-14,
+            VALE_REFE=0.0,
+            VALE_ABS="OUI",
+        ),
+    )
+)
+
+# Thermo-mechanical validation
+
+CHTEMP = CREA_CHAMP(
+    TYPE_CHAM="NOEU_TEMP_R",
+    OPERATION="AFFE",
+    MODELE=MO,
+    AFFE=_F(TOUT="OUI", NOM_CMP="TEMP", VALE=400.0),
+)
+
+CHMAT2 = AFFE_MATERIAU(
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", MATER=MAT),
+    AFFE_VARC=_F(TOUT="OUI", VALE_REF=20.0, NOM_VARC="TEMP", CHAM_GD=CHTEMP),
+)
+
+
+CONT2 = CALCUL(
+    OPTION=("COMPORTEMENT", "FORC_INTE_ELEM", "MATR_TANG_ELEM"),
+    MODELE=MO,
+    CHAM_MATER=CHMAT2,
+    INCREMENT=_F(LIST_INST=LIST2, NUME_ORDRE=2),
+    EXCIT=_F(CHARGE=CHARGE),
+    DEPL=U,
+    INCR_DEPL=DU,
+    SIGM=SIGP,
+    VARI=VARIP,
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INFO=2,
+)
+
+#
+# ==========     FIN DE LA VALIDATION DE : CALCUL/TABLE   ==============
+#
+
+test.printSummary()
+
+FIN()

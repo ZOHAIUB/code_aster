@@ -1,0 +1,227 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", ERREUR=_F(ERREUR_F="ABORT"))
+#
+
+import numpy as np
+import json
+
+# Export des resultats en python
+import numpy as np
+import pickle
+import os
+import os.path as osp
+
+
+MAYA = LIRE_MAILLAGE(FORMAT="MED", UNITE=20)
+
+MODEL = AFFE_MODELE(
+    AFFE=_F(GROUP_MA="Interface", MODELISATION="DKT", PHENOMENE="MECANIQUE"), MAILLAGE=MAYA
+)
+
+NUSTR = NUME_DDL(MODELE=MODEL)
+
+INTERF1 = AFFE_MODELE(
+    MAILLAGE=MAYA, AFFE=_F(GROUP_MA="Interface", MODELISATION="3D", PHENOMENE="THERMIQUE")
+)
+
+INTERF2 = AFFE_MODELE(
+    MAILLAGE=MAYA, AFFE=_F(GROUP_MA="Interface", MODELISATION="3D", PHENOMENE="MECANIQUE")
+)
+INTERF3 = AFFE_MODELE(
+    AFFE=_F(
+        GROUP_MA="Interface", FORMULATION="U_P", MODELISATION="FLUI_STRU", PHENOMENE="MECANIQUE"
+    ),
+    MAILLAGE=MAYA,
+)
+
+
+CHAPPUI = AFFE_CHAR_MECA(
+    DDL_IMPO=(_F(DX=0.0, DY=0.0, DZ=0.0, DRX=0, DRY=0, DRZ=0, GROUP_MA=("Bord_bas",)),),
+    MODELE=MODEL,
+)
+
+# Création d'un champ de déplacement x=z
+
+FDX = FORMULE(NOM_PARA=("X", "Y", "Z"), VALE="Z")
+FDY = FORMULE(NOM_PARA=("X", "Y", "Z"), VALE="0")
+FDZ = FORMULE(NOM_PARA=("X", "Y", "Z"), VALE="0")
+ZERO = DEFI_CONSTANTE(VALE=0.0)
+
+CH_AFFE = CREA_CHAMP(
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_NEUT_F",
+    MAILLAGE=MAYA,
+    AFFE=(
+        _F(TOUT="OUI", NOM_CMP="X1", VALE_F=FDX),
+        _F(TOUT="OUI", NOM_CMP="X2", VALE_F=FDY),
+        _F(TOUT="OUI", NOM_CMP="X3", VALE_F=FDZ),
+    ),
+)
+
+CH_GEO = CREA_CHAMP(
+    OPERATION="EXTR", TYPE_CHAM="NOEU_GEOM_R", NOM_CHAM="GEOMETRIE", MAILLAGE=MAYA, INFO=1
+)
+
+CH_EVAL = CREA_CHAMP(OPERATION="EVAL", TYPE_CHAM="NOEU_NEUT_R", CHAM_F=CH_AFFE, CHAM_PARA=CH_GEO)
+
+Uana = CREA_CHAMP(
+    OPERATION="ASSE",
+    TYPE_CHAM="NOEU_DEPL_R",
+    MAILLAGE=MAYA,
+    ASSE=(
+        _F(TOUT="OUI", CHAM_GD=CH_EVAL, NOM_CMP="X1", NOM_CMP_RESU="DX"),
+        _F(TOUT="OUI", CHAM_GD=CH_EVAL, NOM_CMP="X2", NOM_CMP_RESU="DY"),
+        _F(TOUT="OUI", CHAM_GD=CH_EVAL, NOM_CMP="X3", NOM_CMP_RESU="DZ"),
+    ),
+)
+
+
+# definition du spectre
+
+# DEPENDANTE DE LA PULSATION
+LONG1 = FORMULE(NOM_PARA="PULS", VALE="0.5")
+
+# LONGUEUR DE CORRELATION DANS LE SENS TRANSVERSALE
+# DEPENDANTE DE LA PULSATION
+LONG2 = FORMULE(NOM_PARA="PULS", VALE="0.5")
+
+# EXPRESSION DU SPECTRE TURBULENT (LE MEME QU AU DESSUS)
+GAUSS = FORMULE(NOM_PARA="PULS", VALE="(3.4021e-5)**2*(1000*16)**2*1.5**3")
+
+spectre = DEFI_SPEC_TURB(
+    SPEC_CORR_CONV_2=_F(
+        FONCTION=GAUSS,
+        LONG1_F=LONG1,
+        LONG2_F=LONG2,
+        VITE_FLUI=4.0,
+        FREQ_COUP=15.0,
+        COEF_VITE_FLUI_A=0.65,
+        METHODE="AU_YANG",
+    )
+)
+
+
+####################
+##projection de base
+####################
+
+###
+spproj1 = PROJ_SPEC_BASE(
+    SPEC_TURB=spectre,
+    TOUT="OUI",
+    CHAM_NO=Uana,
+    MODELE_INTERFACE=INTERF1,
+    VECT_X=(0.0, 0.0, 1.0),
+    ORIG_AXE=(0.0, 0.0, 0.0),
+    FREQ_INIT=0.01,
+    FREQ_FIN=0.1,
+    NB_POIN=2,
+)
+
+spproj2 = PROJ_SPEC_BASE(
+    SPEC_TURB=spectre,
+    TOUT="OUI",
+    CHAM_NO=Uana,
+    MODELE_INTERFACE=INTERF2,
+    VECT_X=(0.0, 0.0, 1.0),
+    ORIG_AXE=(0.0, 0.0, 0.0),
+    FREQ_INIT=0.01,
+    FREQ_FIN=0.1,
+    NB_POIN=2,
+)
+
+
+spproj3 = PROJ_SPEC_BASE(
+    SPEC_TURB=spectre,
+    TOUT="OUI",
+    CHAM_NO=Uana,
+    MODELE_INTERFACE=INTERF3,
+    VECT_X=(0.0, 0.0, 1.0),
+    ORIG_AXE=(0.0, 0.0, 0.0),
+    FREQ_INIT=0.01,
+    FREQ_FIN=0.1,
+    NB_POIN=2,
+)
+
+
+# EXTRACTION DE L AUTOSPECTRE D EFFORT MODAL TURBULENT
+
+auto1 = RECU_FONCTION(INTE_SPEC=spproj1, NUME_ORDRE_I=1)
+auto2 = RECU_FONCTION(INTE_SPEC=spproj2, NUME_ORDRE_I=1)
+auto3 = RECU_FONCTION(INTE_SPEC=spproj3, NUME_ORDRE_I=1)
+
+# TEST VALEURS REF
+
+TEST_FONCTION(
+    VALEUR=(
+        _F(
+            VALE_CALC=248.1428566388,
+            VALE_REFE=252.701,
+            VALE_PARA=0.01,
+            REFERENCE="SOURCE_EXTERNE",
+            PRECISION=0.02,
+            FONCTION=auto1,
+        ),
+        _F(
+            VALE_CALC=245.1660973486,
+            VALE_REFE=249.663,
+            VALE_PARA=0.1,
+            REFERENCE="SOURCE_EXTERNE",
+            PRECISION=0.02,
+            FONCTION=auto1,
+        ),
+        _F(
+            VALE_CALC=246.4091344489,
+            VALE_REFE=252.701,
+            VALE_PARA=0.01,
+            REFERENCE="SOURCE_EXTERNE",
+            PRECISION=0.03,
+            FONCTION=auto2,
+        ),
+        _F(
+            VALE_CALC=243.4496208702,
+            VALE_REFE=249.663,
+            VALE_PARA=0.1,
+            REFERENCE="SOURCE_EXTERNE",
+            PRECISION=0.03,
+            FONCTION=auto2,
+        ),
+        _F(
+            VALE_CALC=248.1428566388,
+            VALE_REFE=252.701,
+            VALE_PARA=0.01,
+            REFERENCE="SOURCE_EXTERNE",
+            PRECISION=0.02,
+            FONCTION=auto3,
+        ),
+        _F(
+            VALE_CALC=245.1660973486,
+            VALE_REFE=249.663,
+            VALE_PARA=0.1,
+            REFERENCE="SOURCE_EXTERNE",
+            PRECISION=0.02,
+            FONCTION=auto3,
+        ),
+    )
+)
+
+
+FIN()

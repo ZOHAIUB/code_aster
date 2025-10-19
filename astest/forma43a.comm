@@ -1,0 +1,460 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+
+Sbeton = "10x25"
+CBeton = "C30/37"
+
+spat = 251
+spac = 252
+spbt = 249
+spbc = 9
+fic_section_fibre = "./REPE_OUT/section_fibre_10x25.med"
+fic_courbe_post = "./REPE_OUT/courbes_10x25.post"
+fic_sief_epsi_sp = "./REPE_OUT/sief_epsi_sp_10x25.med"
+fic_vari_sp = "./REPE_OUT/vari_sp_10x25.med"
+fic_repere = "./REPE_OUT/repere_10x25.med"
+
+# lecture maillage linéique
+MAPOU = LIRE_MAILLAGE(UNITE=20, FORMAT="MED")
+#
+# lecture maillage section droite poutre
+MASEC = LIRE_MAILLAGE(UNITE=22, FORMAT="MED")
+#
+#
+GF = DEFI_GEOM_FIBRE(
+    INFO=1,
+    FIBRE=(
+        _F(
+            GROUP_FIBRE="SACIER",
+            CARA="DIAMETRE",
+            COOR_AXE_POUTRE=(0.0, 0.0),
+            VALE=(
+                0.056,
+                -0.206,
+                32.0e-03,
+                0.080,
+                0.218,
+                8.0e-03,
+                -0.056,
+                -0.206,
+                32.0e-03,
+                -0.080,
+                0.218,
+                8.0e-03,
+            ),
+        ),
+    ),
+    SECTION=_F(
+        GROUP_FIBRE="SBETON", COOR_AXE_POUTRE=(0.0, 0.0), MAILLAGE_SECT=MASEC, TOUT_SECT="OUI"
+    ),
+)
+MAGF = CREA_MAILLAGE(GEOM_FIBRE=GF)
+#
+
+# Béton
+BETON = DEFI_MATER_GC(
+    MAZARS=_F(CODIFICATION="EC2", UNITE_CONTRAINTE="Pa", CLASSE=CBeton), RHO=2400.0
+)
+
+# Acier
+ACIER = DEFI_MATER_GC(ACIER=_F(E=200000.0e06, D_SIGM_EPSI=1200.0e6, SY=400.0e06), RHO=7800.0)
+
+MATOR = DEFI_MATERIAU(ELAS=_F(E=2.0e11, NU=0.0, RHO=7800.0))
+
+MOPOU = AFFE_MODELE(
+    MAILLAGE=MAPOU, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="POU_D_EM")
+)
+
+
+PMFMAZAR = DEFI_COMPOR(
+    GEOM_FIBRE=GF,
+    MATER_SECT=MATOR,
+    MULTIFIBRE=(
+        _F(GROUP_FIBRE="SACIER", MATER=ACIER, RELATION="VMIS_CINE_GC"),
+        _F(GROUP_FIBRE="SBETON", MATER=BETON, RELATION="MAZARS_UNIL"),
+    ),
+)
+
+MATMAZAR = AFFE_MATERIAU(
+    MAILLAGE=MAPOU,
+    AFFE=_F(GROUP_MA="POUTRE", MATER=(ACIER, BETON, MATOR)),
+    AFFE_COMPOR=_F(GROUP_MA="POUTRE", COMPOR=PMFMAZAR),
+)
+
+
+POUCA = AFFE_CARA_ELEM(
+    MODELE=MOPOU,
+    INFO=1,
+    POUTRE=_F(GROUP_MA=("POUTRE"), SECTION="RECTANGLE", CARA=("HY", "HZ"), VALE=(0.2, 0.5)),
+    ORIENTATION=_F(GROUP_MA=("POUTRE"), CARA="ANGL_VRIL", VALE=-90.0),
+    GEOM_FIBRE=GF,
+    MULTIFIBRE=_F(
+        GROUP_MA=("POUTRE"),
+        GROUP_FIBRE=("SBETON", "SACIER"),
+        PREC_AIRE=2.0e-02,
+        PREC_INERTIE=2.5e-01,
+    ),
+)
+
+BLOCAGE = AFFE_CHAR_MECA(
+    MODELE=MOPOU,
+    DDL_IMPO=(_F(GROUP_NO="A", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0), _F(GROUP_NO="B", DY=0.0)),
+)
+
+DEPIMP = AFFE_CHAR_MECA(MODELE=MOPOU, DDL_IMPO=_F(GROUP_NO="C", DY=-1.0e-2))
+
+
+FOMULT = DEFI_FONCTION(
+    NOM_PARA="INST", VALE=(0.0, 0.0, 5.0, 5.0), PROL_DROITE="EXCLU", PROL_GAUCHE="EXCLU"
+)
+
+
+inst_fin = 3.37
+LINSTD = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=0.10, NOMBRE=2),
+        _F(JUSQU_A=1.40, NOMBRE=10),
+        _F(JUSQU_A=3.00, NOMBRE=10),
+        _F(JUSQU_A=inst_fin, NOMBRE=10),
+    ),
+)
+
+LINST1 = DEFI_LIST_INST(
+    METHODE="MANUEL",
+    DEFI_LIST=_F(LIST_INST=LINSTD),
+    ECHEC=_F(
+        EVENEMENT="ERREUR",
+        ACTION="DECOUPE",
+        SUBD_METHODE="MANUEL",
+        SUBD_PAS=4,
+        SUBD_PAS_MINI=1.0e-10,
+        SUBD_NIVEAU=5,
+    ),
+)
+
+U1MAZAR = STAT_NON_LINE(
+    MODELE=MOPOU,
+    CHAM_MATER=MATMAZAR,
+    CARA_ELEM=POUCA,
+    EXCIT=(_F(CHARGE=BLOCAGE), _F(CHARGE=DEPIMP, FONC_MULT=FOMULT)),
+    COMPORTEMENT=_F(RELATION="MULTIFIBRE"),
+    INCREMENT=_F(LIST_INST=LINST1, INST_FIN=inst_fin),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    CONVERGENCE=_F(RESI_GLOB_RELA=1.0e-5, ITER_GLOB_MAXI=10),
+)
+
+
+U1MAZAR = CALC_CHAMP(FORCE="REAC_NODA", reuse=U1MAZAR, RESULTAT=U1MAZAR)
+U1MAZAR = CALC_CHAMP(reuse=U1MAZAR, RESULTAT=U1MAZAR, DEFORMATION=("EPSI_ELGA"))
+
+# Réaction
+DEPCY = RECU_FONCTION(
+    RESULTAT=U1MAZAR, NOM_CHAM="DEPL", NOM_CMP="DY", GROUP_NO="C", NOM_RESU="Depl_Cy"
+)
+DEPBX = RECU_FONCTION(
+    RESULTAT=U1MAZAR, NOM_CHAM="DEPL", NOM_CMP="DX", GROUP_NO="B", NOM_RESU="Depl_Bx"
+)
+REACA = RECU_FONCTION(
+    RESULTAT=U1MAZAR, NOM_CHAM="REAC_NODA", NOM_CMP="DY", GROUP_NO="A", NOM_RESU="Reac_Dy"
+)
+# Déformation acier tendu
+DEFAT = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="EPSI_ELGA",
+    NOM_CMP="EPXX",
+    NOM_RESU="EPXX_At",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spat,
+)
+# Déformation acier comprimé
+DEFAC = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="EPSI_ELGA",
+    NOM_CMP="EPXX",
+    NOM_RESU="EPXX_Ac",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spac,
+)
+# Déformation béton tendu
+DEFBT = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="EPSI_ELGA",
+    NOM_CMP="EPXX",
+    NOM_RESU="EPXX_Bt",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spbt,
+)
+# Déformation béton comprimé
+DEFBC = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="EPSI_ELGA",
+    NOM_CMP="EPXX",
+    NOM_RESU="EPXX_Bc",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spbc,
+)
+#
+# Contrainte acier tendu
+CONAT = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="SIEF_ELGA",
+    NOM_CMP="SIXX",
+    NOM_RESU="SIXX_At",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spat,
+)
+# Contrainte acier comprime
+CONAC = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="SIEF_ELGA",
+    NOM_CMP="SIXX",
+    NOM_RESU="SIXX_Ac",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spac,
+)
+# Contrainte beton tendu
+CONBT = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="SIEF_ELGA",
+    NOM_CMP="SIXX",
+    NOM_RESU="SIXX_Bt",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spbt,
+)
+# Contrainte beton comprime
+CONBC = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="SIEF_ELGA",
+    NOM_CMP="SIXX",
+    NOM_RESU="SIXX_Bc",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spbc,
+)
+# Endommagement beton tendu
+DOMBT = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="VARI_ELGA",
+    NOM_CMP="V3",
+    NOM_RESU="Domm_Bt",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spbt,
+)
+# Endommagement beton comprime
+DOMBC = RECU_FONCTION(
+    RESULTAT=U1MAZAR,
+    NOM_CHAM="VARI_ELGA",
+    NOM_CMP="V3",
+    NOM_RESU="Domm_Bc",
+    GROUP_MA="M9",
+    POINT=1,
+    SOUS_POINT=spbc,
+)
+
+DeplBx = 3.096377298027e-03
+ReacAy = 1.076353521137e05
+DefoAt = 1.847874482439e-03
+DefoAc = -9.338660501787e-04
+DefoBt = 2.070938581753e-03
+DefoBc = -1.078201643852e-03
+SigmAt = 3.695748933666e08
+SigmAc = -1.867732131569e08
+SigmBt = 2.728539838478e05
+SigmBc = -2.976228866464e07
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=DEPCY,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=-inst_fin * 1.0e-02,
+        VALE_REFE=-inst_fin * 1.0e-02,
+        REFERENCE="ANALYTIQUE",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=DEPBX,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=DeplBx,
+        VALE_REFE=DeplBx,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=REACA,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=ReacAy,
+        VALE_REFE=ReacAy,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=DEFAT,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=DefoAt,
+        VALE_REFE=DefoAt,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=DEFAC,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=DefoAc,
+        VALE_REFE=DefoAc,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=DEFBT,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=DefoBt,
+        VALE_REFE=DefoBt,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=DEFBC,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=DefoBc,
+        VALE_REFE=DefoBc,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=CONAT,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=SigmAt,
+        VALE_REFE=SigmAt,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=CONAC,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=SigmAc,
+        VALE_REFE=SigmAc,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=CONBT,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=SigmBt,
+        VALE_REFE=SigmBt,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+TEST_FONCTION(
+    VALEUR=_F(
+        FONCTION=CONBC,
+        NOM_PARA="INST",
+        VALE_PARA=inst_fin,
+        VALE_CALC=SigmBc,
+        VALE_REFE=SigmBc,
+        REFERENCE="AUTRE_ASTER",
+    )
+)
+
+
+"""
+Les commandes ci-dessous : trace les courbes et font les sorties MED pour la formation.
+
+unite = DEFI_FICHIER(FICHIER = fic_section_fibre, ACTION='ASSOCIER', TYPE='LIBRE', ACCES='NEW')
+IMPR_RESU(FORMAT='MED',UNITE=unite,RESU=_F(MAILLAGE=MAGF))
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+#
+unite = DEFI_FICHIER(FICHIER = fic_repere, ACTION='ASSOCIER', TYPE='LIBRE', ACCES='NEW')
+IMPR_RESU(
+    FORMAT='MED', UNITE=unite,
+    CONCEPT=_F(CARA_ELEM=POUCA, REPERE_LOCAL='ELNO', MODELE=MOPOU),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+#
+unite = DEFI_FICHIER(FICHIER = fic_sief_epsi_sp, ACTION='ASSOCIER', TYPE='LIBRE', ACCES='NEW')
+IMPR_RESU(
+    FORMAT='MED', UNITE=unite,
+    RESU=_F(RESULTAT=U1MAZAR, CARA_ELEM=POUCA,
+            NOM_CHAM=("SIEF_ELGA", "EPSI_ELGA",),
+    ),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+#
+unite = DEFI_FICHIER(FICHIER = fic_vari_sp, ACTION='ASSOCIER', TYPE='LIBRE', ACCES='NEW')
+IMPR_RESU(
+    FORMAT='MED', UNITE=unite,
+    RESU=_F(RESULTAT=U1MAZAR, CARA_ELEM=POUCA, IMPR_NOM_VARI='NON',
+            NOM_CHAM=("VARI_ELGA",),
+    ),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+#
+unite = DEFI_FICHIER(FICHIER = fic_courbe_post, ACTION='ASSOCIER', TYPE='ASCII',ACCES='NEW')
+IMPR_FONCTION(UNITE=unite,FORMAT='TABLEAU',
+   COURBE=(
+      _F(FONCTION=DEPCY), _F(FONCTION=DEPBX),
+      _F(FONCTION=REACA),
+      _F(FONCTION=DEFAT), _F(FONCTION=DEFAC), _F(FONCTION=DEFBT), _F(FONCTION=DEFBC),
+      _F(FONCTION=CONAT), _F(FONCTION=CONAC), _F(FONCTION=CONBT), _F(FONCTION=CONBC),
+      _F(FONCTION=DOMBT), _F(FONCTION=DOMBC),
+   )
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+"""
+
+
+FIN()

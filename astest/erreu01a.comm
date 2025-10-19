@@ -1,0 +1,73 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+from code_aster.Commands import *
+from code_aster import CA
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION", ERREUR_F="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+
+test = CA.TestCase()
+
+MAIL = LIRE_MAILLAGE(FORMAT="ASTER")
+
+DEFI_GROUP(reuse=MAIL, MAILLAGE=MAIL, CREA_GROUP_MA=_F(NOM="TOUT", TOUT="OUI"))
+
+MOD = AFFE_MODELE(
+    MAILLAGE=MAIL, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="2D_BARRE")
+)
+
+MATER = DEFI_MATERIAU(ELAS=_F(E=2.0e11, NU=0.3))
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MAIL, AFFE=_F(TOUT="OUI", MATER=MATER))
+
+CARBA = AFFE_CARA_ELEM(
+    MODELE=MOD, BARRE=_F(GROUP_MA="TOUT", SECTION="GENERALE", CARA=("A",), VALE=(5.0e-4,))
+)
+
+CH1 = AFFE_CHAR_MECA(MODELE=MOD, ROTATION=_F(VITESSE=1.0, AXE=(0.0, 1.0, 0.0)))
+CH2 = AFFE_CHAR_MECA(
+    MODELE=MOD,
+    ROTATION=_F(VITESSE=1.0, AXE=(0.0, 1.0, 0.0)),
+    DDL_IMPO=_F(TOUT="OUI", DX=0.0, DY=0.0),
+)
+
+# 1) message de la routine CALCUL pour dire qu'un calcul elementaire n'est pas encore programme :
+# ----------------------------------------------------------------------------------------------
+try:
+    UELAS = MECA_STATIQUE(
+        MODELE=MOD, CHAM_MATER=CHMAT, CARA_ELEM=CARBA, EXCIT=_F(CHARGE=CH2), INST=1.0
+    )
+except CA.AsterError as exc:
+    test.assertEqual(exc.id_message, "CALCUL_37")
+
+test.assertFalse("UELAS" in globals())
+
+# 2) message de la routine PRERES pour dire qu'une matrice est singuliere :
+# ----------------------------------------------------------------------------------------------
+try:
+    UELAS = MECA_STATIQUE(
+        MODELE=MOD, CHAM_MATER=CHMAT, CARA_ELEM=CARBA, EXCIT=_F(CHARGE=CH1), INST=1.0
+    )
+
+except CA.AsterError as exc:
+    test.assertEqual(exc.id_message, "FACTOR_11")
+
+test.assertFalse("UELAS" in globals())
+
+FIN()

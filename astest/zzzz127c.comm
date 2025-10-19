@@ -1,0 +1,311 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+import numpy as np
+
+from code_aster.Commands import *
+from code_aster import CA
+
+test = CA.TestCase()
+
+DEBUT(CODE="OUI", ERREUR=_F(ERREUR_F="ABORT"))
+
+
+mesh = LIRE_MAILLAGE(UNITE=20, FORMAT="MED", INFO=2)
+
+mesh = MODI_MAILLAGE(
+    reuse=mesh,
+    MAILLAGE=mesh,
+    ORIE_NORM_COQUE=(
+        _F(GROUP_MA=("IFS1",), GROUP_NO=("N2",), VECT_NORM=(1.0, 0.0, 0.0)),
+        _F(GROUP_MA=("IFS2",), GROUP_NO=("N14",), VECT_NORM=(1.0, 0.0, 0.0)),
+    ),
+)
+
+model = AFFE_MODELE(
+    AFFE=(
+        _F(GROUP_MA=("Sol1", "Sol2"), MODELISATION="3D", PHENOMENE="MECANIQUE"),
+        _F(
+            FORMULATION="U_P",
+            GROUP_MA=("Flu1", "Flu2"),
+            MODELISATION="3D_FLUIDE",
+            PHENOMENE="MECANIQUE",
+        ),
+        _F(
+            FORMULATION="U_P",
+            GROUP_MA=("IFS1", "IFS2"),
+            MODELISATION="FLUI_STRU",
+            PHENOMENE="MECANIQUE",
+        ),
+    ),
+    MAILLAGE=mesh,
+    INFO=2,
+)
+
+scaling = 1.0e6
+acier = DEFI_MATERIAU(
+    ELAS=_F(COEF_AMOR=1.0, E=197000000000.0 / scaling, NU=0.3, RHO=7800.0 / scaling)
+)
+
+eau = DEFI_MATERIAU(FLUIDE=_F(CELE_R=970.0, RHO=732.0 / scaling))
+
+fieldmat = AFFE_MATERIAU(
+    AFFE=(
+        _F(GROUP_MA=("Sol1", "Sol2"), MATER=(acier,)),
+        _F(GROUP_MA=("Flu1", "Flu2", "IFS1", "IFS2"), MATER=(eau,)),
+    ),
+    MODELE=model,
+)
+
+load = AFFE_CHAR_MECA(
+    INFO=1,
+    LIAISON_MAIL=_F(GROUP_MA_MAIT=("Sol1",), GROUP_MA_ESCL=("S21",), DDL=("DX", "DY", "DZ")),
+    MODELE=model,
+)
+
+load8 = AFFE_CHAR_MECA(
+    INFO=1,
+    LIAISON_MAIL=_F(GROUP_MA_MAIT=("Flu1",), GROUP_MA_ESCL=("F21",), DDL=("PRES")),
+    MODELE=model,
+)
+
+ASSEMBLAGE(
+    CHAM_MATER=fieldmat,
+    CHARGE=(load, load8),
+    MATR_ASSE=(
+        _F(MATRICE=CO("mass"), OPTION="MASS_MECA"),
+        _F(MATRICE=CO("rigi"), MODE_FOURIER=0, OPTION="RIGI_MECA"),
+    ),
+    MODELE=model,
+    NUME_DDL=CO("NUMEDDL"),
+)
+
+# Résolution classique
+modes = CALC_MODES(
+    CALC_FREQ=_F(FREQ=3.0, NMAX_FREQ=8, NMAX_ITER_SHIFT=3, PREC_SHIFT=0.05, SEUIL_FREQ=0.01),
+    MATR_MASS=mass,
+    MATR_RIGI=rigi,
+    CHAM_MATER=fieldmat,
+    OPTION="CENTRE",
+    VERI_MODE=_F(PREC_SHIFT=0.005, SEUIL=1e-06, STOP_ERREUR="NON", STURM="OUI"),
+)
+
+CALC_CHAMP(reuse=modes, RESULTAT=modes, FORCE="FORC_NODA")
+
+CALC_CHAMP(reuse=modes, RESULTAT=modes, FORCE="REAC_NODA")
+
+IMPR_RESU(
+    FICHIER_UNIQUE="OUI",
+    FORMAT="MED",
+    RESU=_F(NOM_CHAM="DEPL", PARTIE="REEL", RESULTAT=modes),
+    VERSION_MED="3.3.1",
+)
+
+# Résolution avec élimination
+rigi_elim = ELIM_LAGR(MATR_RIGI=rigi)
+mass_elim = ELIM_LAGR(MATR_ASSE=mass, MATR_RIGI=rigi)
+
+modes_elim = CALC_MODES(
+    CALC_FREQ=_F(FREQ=3.0, NMAX_FREQ=8, NMAX_ITER_SHIFT=3, PREC_SHIFT=0.05, SEUIL_FREQ=0.01),
+    MATR_MASS=mass_elim,
+    MATR_RIGI=rigi_elim,
+    OPTION="CENTRE",
+    VERI_MODE=_F(PREC_SHIFT=0.005, SEUIL=1e-06, STOP_ERREUR="NON", STURM="OUI"),
+)
+
+modes_reconstruit = REST_GENE_PHYS(RESU_GENE=modes_elim)
+
+CALC_CHAMP(
+    reuse=modes_reconstruit, RESULTAT=modes_reconstruit, CHAM_MATER=fieldmat, FORCE="FORC_NODA"
+)
+
+CALC_CHAMP(
+    reuse=modes_reconstruit, RESULTAT=modes_reconstruit, CHAM_MATER=fieldmat, FORCE="REAC_NODA"
+)
+
+IMPR_RESU(
+    FICHIER_UNIQUE="OUI",
+    FORMAT="MED",
+    RESU=_F(NOM_CHAM="DEPL", PARTIE="REEL", RESULTAT=modes_reconstruit),
+    VERSION_MED="3.3.1",
+)
+
+
+# Comparaison des 2 modes (on utilise des valeurs absolues car les modes
+# peuvent être identiques à Pi près)
+v8 = modes.getField("DEPL", 8)
+v8_r = modes_reconstruit.getField("DEPL", 8)
+vals = v8.getValues()
+vals_r = v8_r.getValues()
+
+diff = np.max(np.abs(np.abs(vals) - np.abs(vals_r))) / np.max(np.abs(vals))
+test.assertLessEqual(diff, 1.0e-8)
+
+v8 = modes.getField("FORC_NODA", 8)
+v8_r = modes_reconstruit.getField("FORC_NODA", 8)
+vals = v8.getValues()
+vals_r = v8_r.getValues()
+
+diff = np.max(np.abs(np.abs(vals) - np.abs(vals_r))) / np.max(np.abs(vals))
+test.assertLessEqual(diff, 1.0e-6)
+
+v8 = modes.getField("REAC_NODA", 8)
+v8_r = modes_reconstruit.getField("REAC_NODA", 8)
+vals = v8.getValues()
+vals_r = v8_r.getValues()
+
+diff = np.max(np.abs(np.abs(vals) - np.abs(vals_r))) / np.max(np.abs(vals))
+test.assertLessEqual(diff, 1.0e-6)
+
+test.assertEqual(rigi_elim.getType(), "MATR_ASSE_ELIM_R")
+test.assertEqual(mass_elim.getType(), "MATR_ASSE_ELIM_R")
+
+# --------------------------------------------------------------------------------------------
+
+# Maillage collé (sans relations linéaires)
+
+meshColle = LIRE_MAILLAGE(UNITE=30, FORMAT="MED", INFO=2)
+
+meshColle = MODI_MAILLAGE(
+    reuse=meshColle,
+    MAILLAGE=meshColle,
+    ORIE_NORM_COQUE=(
+        _F(GROUP_MA=("IFS1",), GROUP_NO=("N2",), VECT_NORM=(1.0, 0.0, 0.0)),
+        _F(GROUP_MA=("IFS2",), GROUP_NO=("N14",), VECT_NORM=(1.0, 0.0, 0.0)),
+    ),
+)
+
+modelColle = AFFE_MODELE(
+    AFFE=(
+        _F(GROUP_MA=("Sol1", "Sol2"), MODELISATION="3D", PHENOMENE="MECANIQUE"),
+        _F(
+            FORMULATION="U_P",
+            GROUP_MA=("Flu1", "Flu2"),
+            MODELISATION="3D_FLUIDE",
+            PHENOMENE="MECANIQUE",
+        ),
+        _F(
+            FORMULATION="U_P",
+            GROUP_MA=("IFS1", "IFS2"),
+            MODELISATION="FLUI_STRU",
+            PHENOMENE="MECANIQUE",
+        ),
+    ),
+    MAILLAGE=meshColle,
+    INFO=2,
+)
+
+fieldmatColle = AFFE_MATERIAU(
+    AFFE=(
+        _F(GROUP_MA=("Sol1", "Sol2"), MATER=(acier,)),
+        _F(GROUP_MA=("Flu1", "Flu2", "IFS1", "IFS2"), MATER=(eau,)),
+    ),
+    MODELE=modelColle,
+)
+
+
+ASSEMBLAGE(
+    CHAM_MATER=fieldmatColle,
+    MATR_ASSE=(
+        _F(MATRICE=CO("massC"), OPTION="MASS_MECA"),
+        _F(MATRICE=CO("rigiC"), OPTION="RIGI_MECA"),
+    ),
+    MODELE=modelColle,
+    NUME_DDL=CO("NUMEDDLCOLLE"),
+)
+
+modesColle = CALC_MODES(
+    CALC_FREQ=_F(FREQ=3.0, NMAX_FREQ=8, NMAX_ITER_SHIFT=3, PREC_SHIFT=0.05, SEUIL_FREQ=0.01),
+    MATR_MASS=massC,
+    MATR_RIGI=rigiC,
+    OPTION="CENTRE",
+    VERI_MODE=_F(PREC_SHIFT=0.005, SEUIL=1e-06, STOP_ERREUR="NON", STURM="OUI"),
+)
+CALC_CHAMP(reuse=modesColle, RESULTAT=modesColle, CHAM_MATER=fieldmatColle, FORCE="FORC_NODA")
+CALC_CHAMP(reuse=modesColle, RESULTAT=modesColle, CHAM_MATER=fieldmatColle, FORCE="REAC_NODA")
+
+# Create a new result based on the real part of the solution (the imaginary one is 0)
+mode_r = CREA_CHAMP(
+    MODELE=modelColle,
+    PROL_ZERO="OUI",
+    NUME_DDL=NUMEDDLCOLLE,
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_DEPL_R",
+    AFFE=(_F(TOUT="OUI", NOM_CMP="DX", VALE=0.0),),
+)
+mode_r.setValues(modesColle.getField("DEPL", 8).getRealPart().getValues())
+resu_r = CREA_RESU(
+    OPERATION="AFFE",
+    TYPE_RESU="MULT_ELAS",
+    AFFE=_F(NOM_CHAM="DEPL", CHAM_GD=mode_r, MODELE=modelColle),
+)
+CALC_CHAMP(reuse=resu_r, RESULTAT=resu_r, CHAM_MATER=fieldmatColle, FORCE="FORC_NODA")
+CALC_CHAMP(reuse=resu_r, RESULTAT=resu_r, CHAM_MATER=fieldmatColle, FORCE="REAC_NODA")
+
+
+forc = modesColle.getField("FORC_NODA", 8)
+forc_r = resu_r.getField("FORC_NODA", 1)
+
+vals = forc.getValues()
+vals_r = forc_r.getValues()
+
+diff = np.max(np.abs(np.abs(vals) - np.abs(vals_r))) / np.max(np.abs(vals))
+test.assertLessEqual(diff, 1.0e-6)
+
+forc = modesColle.getField("REAC_NODA", 8)
+forc_r = resu_r.getField("REAC_NODA", 1)
+
+vals = forc.getValues()
+vals_r = forc_r.getValues()
+
+diff = np.max(np.abs(np.abs(vals) - np.abs(vals_r))) / np.max(np.abs(vals))
+test.assertLessEqual(diff, 1.0e-6)
+
+
+# Reference: maillage collé (non_régression)
+freq1Refe = 9.34491e01
+freq2Refe = 5.41082e02
+
+TEST_RESU(RESU=_F(RESULTAT=modesColle, NUME_MODE=7, PARA="FREQ", VALE_CALC=freq1Refe))
+TEST_RESU(RESU=_F(RESULTAT=modesColle, NUME_MODE=8, PARA="FREQ", VALE_CALC=freq2Refe))
+
+TEST_RESU(
+    RESU=_F(
+        RESULTAT=modes,
+        NUME_MODE=7,
+        PARA="FREQ",
+        REFERENCE="AUTRE_ASTER",
+        VALE_REFE=freq1Refe,
+        VALE_CALC=93.449056119954,
+        PRECISION=1.0e-6,
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        RESULTAT=modes,
+        NUME_MODE=8,
+        PARA="FREQ",
+        REFERENCE="AUTRE_ASTER",
+        VALE_REFE=freq2Refe,
+        VALE_CALC=541.0818885140138,
+        PRECISION=1.0e-6,
+    )
+)
+
+FIN()

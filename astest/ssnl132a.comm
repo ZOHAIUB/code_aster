@@ -1,0 +1,391 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+
+#
+import math
+
+#
+# Géométrie
+RayonExte = 0.300
+Epaisseur = 0.006
+# Matériau
+Young = 200000.0e06
+Sigmay = 240.0e06
+Rho = 7800.0
+TanPlast = 1000.0e06
+relation = "VMIS_CINE_LINE"
+# Maillage
+TUYAU_NSEC = 32
+TUYAU_NCOU = 3
+#
+# Inertie
+Ipoutre = math.pi * (math.pow(RayonExte, 4) - math.pow(RayonExte - Epaisseur, 4)) / 4.0
+L2 = 1.5
+L3 = 2.0
+Pelas = -Sigmay * Ipoutre / RayonExte * 8.0 / (4 * L3 * L2 + L3**2)
+
+MAIL = LIRE_MAILLAGE(UNITE=20, FORMAT="MED")
+
+MODELE = AFFE_MODELE(
+    MAILLAGE=MAIL, AFFE=_F(GROUP_MA="TOUT", PHENOMENE="MECANIQUE", MODELISATION="TUYAU_3M")
+)
+
+CAREL = AFFE_CARA_ELEM(
+    MODELE=MODELE,
+    POUTRE=(
+        _F(
+            SECTION="CERCLE",
+            GROUP_MA="TOUT",
+            CARA=("R", "EP"),
+            VALE=(RayonExte, Epaisseur),
+            TUYAU_NSEC=TUYAU_NSEC,
+            TUYAU_NCOU=TUYAU_NCOU,
+        ),
+    ),
+)
+
+
+MAT = DEFI_MATERIAU(
+    ELAS=_F(E=Young, NU=0.3, RHO=Rho), ECRO_LINE=_F(SY=Sigmay, D_SIGM_EPSI=TanPlast)
+)
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MAIL, AFFE=_F(GROUP_MA="TOUT", MATER=MAT))
+
+BLOCAGE = AFFE_CHAR_MECA(
+    MODELE=MODELE,
+    DDL_IMPO=(
+        _F(GROUP_NO=("PFree1",), DRX=0.0),
+        _F(GROUP_NO=("PAppu1",), DX=0.0, DY=0.0, DZ=0.0),
+        _F(GROUP_NO=("PAppu2",), DY=0.0, DZ=0.0),
+    ),
+    FORCE_POUTRE=_F(GROUP_MA="TTronM", FZ=Pelas),
+)
+
+instpost = (1.0,)
+
+L_INIT = DEFI_LIST_REEL(
+    DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=0.2, NOMBRE=2), _F(JUSQU_A=1.0, NOMBRE=4))
+)
+
+FOBLOC = DEFI_FONCTION(
+    NOM_PARA="INST",
+    VALE=(0.00, 0.00, 0.2, 4.0 / 3.0, 1.00, 1.60),
+    PROL_GAUCHE="EXCLU",
+    PROL_DROITE="CONSTANT",
+)
+
+RESULT = STAT_NON_LINE(
+    MODELE=MODELE,
+    CHAM_MATER=CHMAT,
+    CARA_ELEM=CAREL,
+    EXCIT=(_F(CHARGE=BLOCAGE, FONC_MULT=FOBLOC),),
+    COMPORTEMENT=_F(RELATION=relation, DEFORMATION="PETIT"),
+    INCREMENT=_F(LIST_INST=L_INIT),
+    CONVERGENCE=_F(ITER_GLOB_MAXI=15),
+    NEWTON=_F(REAC_INCR=1, MATRICE="TANGENTE", REAC_ITER=1),
+    SOLVEUR=_F(METHODE="MUMPS"),
+)
+
+# tester NOM_CMP / NOM_VARI dans MIN_MAX_SP / POST_CHAMP
+SOLPL1 = (
+    POST_CHAMP(
+        RESULTAT=RESULT,
+        MIN_MAX_SP=_F(NOM_CHAM="VARI_ELGA", NOM_CMP="V7", TYPE_MAXI="MAXI", NUME_CHAM_RESU=7),
+    ),
+)
+
+SOLPL2 = (
+    POST_CHAMP(
+        RESULTAT=RESULT,
+        GROUP_MA="TTronM",
+        MIN_MAX_SP=_F(NOM_CHAM="VARI_ELGA", NOM_CMP="V7", TYPE_MAXI="MAXI", NUME_CHAM_RESU=7),
+    ),
+)
+
+SOLPL3 = (
+    POST_CHAMP(
+        RESULTAT=RESULT,
+        GROUP_MA="TTronM",
+        MIN_MAX_SP=_F(
+            NOM_CHAM="VARI_ELGA", NOM_VARI="INDIPLAS", TYPE_MAXI="MAXI", NUME_CHAM_RESU=7
+        ),
+    ),
+)
+SOLPL4 = (
+    POST_CHAMP(
+        RESULTAT=RESULT,
+        MIN_MAX_SP=_F(
+            NOM_CHAM="VARI_ELGA", NOM_VARI="INDIPLAS", TYPE_MAXI="MAXI", NUME_CHAM_RESU=7
+        ),
+    ),
+)
+
+
+GrpMaille = ("TTronM",)
+TSIEF = CREA_TABLE(
+    RESU=_F(
+        RESULTAT=RESULT, NOM_CHAM=("SIEF_ELGA",), INST=instpost, GROUP_MA=GrpMaille, TOUT_CMP="OUI"
+    )
+)
+
+point_1 = int(2 * TUYAU_NCOU * (2 * TUYAU_NSEC + 1) + TUYAU_NSEC / 2 + 1)
+point_2 = int((2 * TUYAU_NCOU + 1) * (2 * TUYAU_NSEC + 1) - TUYAU_NSEC / 2)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="23"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=247664428.90625608,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="23"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-247664428.9062555,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="21"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=293569324.48907524,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="21"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-293569324.48907495,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="16"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=293569324.4890773,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="16"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-293569324.48907727,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="17"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=306392886.370391,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="17"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-306392886.37039095,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="18"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=313248744.6660285,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="18"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-313248744.6660283,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="14"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=247664428.90625954,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="14"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-247664428.90625894,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="22"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=272905930.50850123,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="22"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-272905930.50850105,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="15"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=272905930.5085014,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="15"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=2),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-272905930.5085015,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="20"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=306392886.37038845,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="20"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-306392886.37038773,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="19"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_1),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=313248744.6660278,
+)
+
+TEST_TABLE(
+    TABLE=TSIEF,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=1.000000),
+        _F(NOM_PARA="MAILLE", CRIT_COMP="EQ", VALE_K="19"),
+        _F(NOM_PARA="POINT", CRIT_COMP="EQ", VALE_I=1),
+        _F(NOM_PARA="SOUS_POINT", CRIT_COMP="EQ", VALE_I=point_2),
+    ),
+    NOM_PARA="SIXX",
+    VALE_CALC=-313248744.66602784,
+)
+
+FIN()

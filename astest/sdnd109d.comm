@@ -1,0 +1,860 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+#
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="NON"))
+# SDVERI='NON' car la verification est trop couteuse en CPU
+import numpy as NU
+
+mail = LIRE_MAILLAGE(UNITE=20, FORMAT="ASTER")
+
+modele = AFFE_MODELE(
+    MAILLAGE=mail, AFFE=_F(GROUP_MA=("GAC", "RESSORT"), PHENOMENE="MECANIQUE", MODELISATION="DIS_T")
+)
+
+Pesanteur = 10.0
+Raidxyz = 2.0
+Masse = 15.0
+#
+Kress = 500.0
+Tfin = 10.0
+#
+carael = AFFE_CARA_ELEM(
+    MODELE=modele,
+    DISCRET=(
+        _F(GROUP_MA="RESSORT", REPERE="LOCAL", CARA="K_T_D_L", VALE=(Kress, Kress, Kress)),
+        _F(GROUP_MA="RESSORT", CARA="M_T_D_L", VALE=(0.0,)),
+        _F(GROUP_MA="RESSORT", CARA="A_T_D_L", VALE=(0.0, 0.0, 0.0)),
+        _F(GROUP_MA="GAC", REPERE="LOCAL", CARA="K_T_D_L", VALE=(Raidxyz, Raidxyz, Raidxyz)),
+        _F(GROUP_MA="GAC", CARA="M_T_D_L", VALE=(Masse,)),
+        _F(GROUP_MA="GAC", CARA="A_T_D_L", VALE=(0.0, 0.0, 0.0)),
+    ),
+)
+charge = AFFE_CHAR_MECA(
+    MODELE=modele,
+    PESANTEUR=_F(GROUP_MA="GAC", GRAVITE=Pesanteur, DIRECTION=(1.0, 0.0, 0.0)),
+    DDL_IMPO=(_F(GROUP_NO="PT2", DX=0.0, DY=0.0, DZ=0.0), _F(GROUP_NO="PT3", DY=0.0, DZ=0.0)),
+)
+FDeplT = FORMULE(
+    VALE="0.25*sin(2.0*pi*INST)+0.10*sin(2.0*pi*1.5*INST)+0.10*sin(2.0*pi*3.0*INST)",
+    NOM_PARA="INST",
+)
+pas = 1.0 / (4.0 * 10.0)
+lsignal = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=Tfin, PAS=pas),))
+DeplT = CALC_FONC_INTERP(
+    FONCTION=FDeplT,
+    LIST_PARA=lsignal,
+    NOM_PARA="INST",
+    PROL_GAUCHE="CONSTANT",
+    PROL_DROITE="CONSTANT",
+    INTERPOL="LIN",
+)
+CLdepl = AFFE_CHAR_MECA_F(MODELE=modele, DDL_IMPO=(_F(GROUP_NO="PT3", DX=DeplT),))
+#
+ldepla = NU.array([0.00, 2.00, 5.00, 7.000, 9.500, 13.000, 16.000, 200.000]) / 10.0
+lforce = NU.array([4.00, 4.00, 4.50, 4.000, 3.750, 3.500, 3.000, 3.000]) * 100.0
+# Raideur variable
+lraide = NU.array([2.00, 2.00, 1.80, 1.400, 1.400, 1.350, 1.330, 1.330]) * 1000.0
+# Amortissement
+lamort = NU.array([1.00, 1.00, 1.00, 0.800, 0.800, 0.700, 0.600, 0.600]) * 2.0
+
+fctfx = DEFI_FONCTION(NOM_PARA="DX", ABSCISSE=ldepla, ORDONNEE=lforce)
+fctrd = DEFI_FONCTION(NOM_PARA="DX", ABSCISSE=ldepla, ORDONNEE=lraide)
+fctam = DEFI_FONCTION(NOM_PARA="DX", ABSCISSE=ldepla, ORDONNEE=lamort)
+
+grilleac = DEFI_MATERIAU(
+    INFO=2,
+    DIS_CHOC_ENDO=_F(
+        FX=fctfx, RIGI_NOR=fctrd, AMOR_NOR=fctam, DIST_1=0.0, DIST_2=0.0, CRIT_AMOR="EXCLUS"
+    ),
+)
+
+chmat = AFFE_MATERIAU(MAILLAGE=mail, AFFE=_F(GROUP_MA="GAC", MATER=grilleac))
+#
+# --------------------------------------------------------------------
+pas1 = 0.005
+l_inst1 = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=Tfin, PAS=pas1),))
+
+resu1 = DYNA_NON_LINE(
+    MODELE=modele,
+    CHAM_MATER=chmat,
+    CARA_ELEM=carael,
+    EXCIT=(_F(CHARGE=charge), _F(CHARGE=CLdepl)),
+    COMPORTEMENT=(_F(GROUP_MA="GAC", RELATION="CHOC_ENDO"),),
+    INCREMENT=_F(LIST_INST=l_inst1),
+    SCHEMA_TEMPS=_F(SCHEMA="NEWMARK", FORMULATION="DEPLACEMENT"),
+    CONVERGENCE=_F(RESI_REFE_RELA=5.0e-02, EFFORT_REFE=1.0),
+    NEWTON=_F(REAC_INCR=1, MATRICE="TANGENTE", REAC_ITER=1),
+    ARCHIVAGE=_F(LIST_INST=l_inst1),
+)
+
+# --------------------------------------------------------------------
+pas2 = 0.010
+l_inst2 = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=Tfin, PAS=pas2),))
+
+resu2 = DYNA_NON_LINE(
+    MODELE=modele,
+    CHAM_MATER=chmat,
+    CARA_ELEM=carael,
+    EXCIT=(_F(CHARGE=charge), _F(CHARGE=CLdepl)),
+    COMPORTEMENT=(_F(GROUP_MA="GAC", RELATION="CHOC_ENDO"),),
+    INCREMENT=_F(LIST_INST=l_inst2),
+    SCHEMA_TEMPS=_F(SCHEMA="NEWMARK", FORMULATION="DEPLACEMENT"),
+    CONVERGENCE=_F(RESI_REFE_RELA=5.0e-02, EFFORT_REFE=1.0),
+    NEWTON=_F(REAC_INCR=1, MATRICE="TANGENTE", REAC_ITER=1),
+    ARCHIVAGE=_F(LIST_INST=l_inst2),
+)
+#
+DEPL11 = RECU_FONCTION(RESULTAT=resu1, NOM_CHAM="DEPL", NOM_CMP="DX", GROUP_NO="PT1")
+FORC_1 = RECU_FONCTION(RESULTAT=resu1, NOM_CHAM="SIEF_ELGA", NOM_CMP="N", GROUP_MA="GAC", POINT=1)
+PCUM_1 = RECU_FONCTION(RESULTAT=resu1, NOM_CHAM="VARI_ELGA", NOM_CMP="V1", GROUP_MA="GAC", POINT=1)
+#
+DEPL12 = RECU_FONCTION(RESULTAT=resu2, NOM_CHAM="DEPL", NOM_CMP="DX", GROUP_NO="PT1")
+FORC_2 = RECU_FONCTION(RESULTAT=resu2, NOM_CHAM="SIEF_ELGA", NOM_CMP="N", GROUP_MA="GAC", POINT=1)
+PCUM_2 = RECU_FONCTION(RESULTAT=resu2, NOM_CHAM="VARI_ELGA", NOM_CMP="V1", GROUP_MA="GAC", POINT=1)
+#
+# INST             DEPL              FORC              PCUM
+Resultat1 = [
+    1.1000000000e-01,
+    8.6804086791e-02,
+    0.0000000000e00,
+    0.0000000000e00,
+    1.4000000000e-01,
+    1.4622888577e-01,
+    -9.3095792503e01,
+    0.0000000000e00,
+    2.0000000000e-01,
+    2.8097327013e-01,
+    -3.6233269257e02,
+    0.0000000000e00,
+    2.1000000000e-01,
+    3.0077983541e-01,
+    -4.0020756922e02,
+    6.5448525354e-04,
+    3.0000000000e-01,
+    3.8702333101e-01,
+    -4.1432695015e02,
+    7.1875870534e-02,
+    3.7000000000e-01,
+    3.2938952603e-01,
+    -3.0519244544e02,
+    7.1875870534e-02,
+    4.5000000000e-01,
+    1.8585445430e-01,
+    -2.7157682192e01,
+    7.1875870534e-02,
+    4.6000000000e-01,
+    1.6745740815e-01,
+    -5.0626169923e-13,
+    7.1875870534e-02,
+    1.0300000000e00,
+    1.7180719463e-01,
+    0.0000000000e00,
+    7.1875870534e-02,
+    1.1000000000e00,
+    3.3931804834e-01,
+    -3.2448534482e02,
+    7.1875870534e-02,
+    1.1800000000e00,
+    4.2796352416e-01,
+    -4.1941137971e02,
+    1.0640770047e-01,
+    1.2200000000e00,
+    4.0604497060e-01,
+    -3.7960626144e02,
+    1.0640770047e-01,
+    1.3000000000e00,
+    2.5556335784e-01,
+    -9.3838616473e01,
+    1.0640770047e-01,
+    1.3300000000e00,
+    1.8864754296e-01,
+    0.0000000000e00,
+    1.0640770047e-01,
+    1.6800000000e00,
+    2.1303527644e-01,
+    -1.2618687661e01,
+    1.0640770047e-01,
+    1.7000000000e00,
+    2.2760950432e-01,
+    -4.0278383320e01,
+    1.0640770047e-01,
+    1.7700000000e00,
+    2.5132313685e-01,
+    -8.4437826214e01,
+    1.0640770047e-01,
+    1.8600000000e00,
+    2.0035159047e-01,
+    -3.0576169041e-01,
+    1.0640770047e-01,
+    2.2300000000e00,
+    2.0085178221e-01,
+    -3.0576169049e-01,
+    1.0640770047e-01,
+    2.2400000000e00,
+    2.2987568150e-01,
+    -4.5396050970e01,
+    1.0640770047e-01,
+    2.3900000000e00,
+    5.1870341609e-01,
+    -4.3529203811e02,
+    1.8115447811e-01,
+    2.5100000000e00,
+    3.2475961050e-01,
+    -8.1214974267e01,
+    1.8115447811e-01,
+    2.5200000000e00,
+    2.9557133464e-01,
+    -2.7247122541e01,
+    1.8115447811e-01,
+    3.1200000000e00,
+    2.7172651985e-01,
+    -5.6829821024e-01,
+    1.8115447811e-01,
+    3.1400000000e00,
+    3.6441643185e-01,
+    -1.5499624031e02,
+    1.8115447811e-01,
+    3.1500000000e00,
+    4.0997773411e-01,
+    -2.3928706667e02,
+    1.8115447811e-01,
+    3.1600000000e00,
+    4.5402668010e-01,
+    -3.2062556559e02,
+    1.8115447811e-01,
+    3.1700000000e00,
+    4.9584120183e-01,
+    -3.9767749170e02,
+    1.8115447811e-01,
+    3.1800000000e00,
+    5.3474660286e-01,
+    -4.3834644694e02,
+    1.9624012979e-01,
+    3.1900000000e00,
+    5.7030758132e-01,
+    -4.4413876004e02,
+    2.2520169528e-01,
+    3.2000000000e00,
+    6.0231981785e-01,
+    -4.4875059747e02,
+    2.5115151451e-01,
+    3.3800000000e00,
+    5.5500959183e-01,
+    -1.6466131391e02,
+    3.4724487439e-01,
+    3.4000000000e00,
+    4.9824323908e-01,
+    -7.6126292876e01,
+    3.4724487439e-01,
+    4.2100000000e00,
+    5.1240047452e-01,
+    -1.0184353234e02,
+    3.4724487439e-01,
+    4.2300000000e00,
+    6.0081727445e-01,
+    -2.3964768562e02,
+    3.4724487439e-01,
+    4.2700000000e00,
+    7.5157612858e-01,
+    -4.1002660302e02,
+    3.7544572117e-01,
+    4.4600000000e00,
+    6.8814501393e-01,
+    -1.1997683213e02,
+    5.0061564256e-01,
+    4.4800000000e00,
+    6.1705240720e-01,
+    -2.0972026305e01,
+    5.0061564256e-01,
+    5.2100000000e00,
+    7.3590329674e-01,
+    -1.8883455005e02,
+    5.0061564256e-01,
+    5.2300000000e00,
+    8.4547058842e-01,
+    -3.4121617724e02,
+    5.0061564256e-01,
+    5.2600000000e00,
+    9.8061505226e-01,
+    -3.8001447764e02,
+    6.0656573949e-01,
+    5.4500000000e00,
+    9.2517530869e-01,
+    -7.1921029660e01,
+    7.7030019577e-01,
+    5.4700000000e00,
+    8.5038379543e-01,
+    0.0000000000e00,
+    7.7030019577e-01,
+    6.2800000000e00,
+    1.0341485398e00,
+    -2.2661865009e02,
+    7.7030019577e-01,
+    6.3000000000e00,
+    1.1715816917e00,
+    -3.6472201996e02,
+    8.0624966988e-01,
+    6.3100000000e00,
+    1.2336277241e00,
+    -3.6033935264e02,
+    8.6911427888e-01,
+    6.5000000000e00,
+    1.3863574036e00,
+    -7.8846606522e01,
+    1.2227786004e00,
+    6.5100000000e00,
+    1.3399132142e00,
+    -1.7202962081e01,
+    1.2227786004e00,
+    7.3400000000e00,
+    1.5474775258e00,
+    -2.9943042759e02,
+    1.2227786004e00,
+    7.3500000000e00,
+    1.6206632555e00,
+    -3.1173091142e02,
+    1.2853858593e00,
+    7.3600000000e00,
+    1.6882064398e00,
+    -3.0058677367e02,
+    1.3597607981e00,
+    7.3700000000e00,
+    1.7499901672e00,
+    -2.9839633881e02,
+    1.4224731298e00,
+    7.4900000000e00,
+    1.9937888981e00,
+    -2.6040271012e02,
+    1.6914025849e00,
+    7.5400000000e00,
+    1.8087499162e00,
+    -1.8059901637e01,
+    1.6914025849e00,
+    7.5500000000e00,
+    1.7541838577e00,
+    0.0000000000e00,
+    1.6914025849e00,
+    8.3900000000e00,
+    2.0354565230e00,
+    -2.9870016505e02,
+    1.7097807155e00,
+    8.4000000000e00,
+    2.1414332277e00,
+    -2.9870016505e02,
+    1.8150964163e00,
+    8.4100000000e00,
+    2.2398892591e00,
+    -2.9870016505e02,
+    1.9128563035e00,
+    8.5300000000e00,
+    2.7145923865e00,
+    -2.7331451638e02,
+    2.4000241003e00,
+    8.5700000000e00,
+    2.5493106908e00,
+    -5.8215364503e01,
+    2.4000241003e00,
+    8.5800000000e00,
+    2.4845739613e00,
+    0.0000000000e00,
+    2.4000241003e00,
+    9.4700000000e00,
+    2.7947251434e00,
+    -2.9813572979e02,
+    2.4685844253e00,
+    9.4800000000e00,
+    2.8901297045e00,
+    -2.9813572979e02,
+    2.5630992474e00,
+    9.4900000000e00,
+    2.9754677658e00,
+    -2.9813572979e02,
+    2.6475107929e00,
+    9.5800000000e00,
+    3.2373906888e00,
+    -2.6795743906e02,
+    2.9271139093e00,
+    9.5900000000e00,
+    3.2068111672e00,
+    -2.2871729781e02,
+    2.9271139093e00,
+    9.6000000000e00,
+    3.1644872537e00,
+    -1.7381237071e02,
+    2.9271139093e00,
+    9.6100000000e00,
+    3.1108679393e00,
+    -1.0382120543e02,
+    2.9271139093e00,
+    9.6200000000e00,
+    3.0465577861e00,
+    -1.9530015569e01,
+    2.9271139093e00,
+]
+Instant = Resultat1[0::4]
+Deplace = Resultat1[1::4]
+Force = Resultat1[2::4]
+Pcumul = Resultat1[3::4]
+motclef = {}
+motclef["VALEUR"] = []
+for ii in range(len(Instant)):
+    # Pour Force
+    if abs(Force[ii]) > 1.0:
+        motclef["VALEUR"].append(
+            _F(FONCTION=FORC_1, NOM_PARA="INST", VALE_PARA=Instant[ii], VALE_CALC=Force[ii])
+        )
+    else:
+        motclef["VALEUR"].append(
+            _F(
+                FONCTION=FORC_1,
+                NOM_PARA="INST",
+                VALE_PARA=Instant[ii],
+                VALE_CALC=Force[ii],
+                CRITERE="ABSOLU",
+            )
+        )
+    # Pour Pcumul
+    if abs(Pcumul[ii]) > 0.001:
+        motclef["VALEUR"].append(
+            _F(FONCTION=PCUM_1, NOM_PARA="INST", VALE_PARA=Instant[ii], VALE_CALC=Pcumul[ii])
+        )
+    else:
+        motclef["VALEUR"].append(
+            _F(
+                FONCTION=PCUM_1,
+                NOM_PARA="INST",
+                VALE_PARA=Instant[ii],
+                VALE_CALC=Pcumul[ii],
+                CRITERE="ABSOLU",
+            )
+        )
+    # Pour Deplace
+    if abs(Deplace[ii]) > 0.001:
+        motclef["VALEUR"].append(
+            _F(FONCTION=DEPL11, NOM_PARA="INST", VALE_PARA=Instant[ii], VALE_CALC=Deplace[ii])
+        )
+    else:
+        motclef["VALEUR"].append(
+            _F(
+                FONCTION=DEPL11,
+                NOM_PARA="INST",
+                VALE_PARA=Instant[ii],
+                VALE_CALC=Deplace[ii],
+                CRITERE="ABSOLU",
+            )
+        )
+TEST_FONCTION(**motclef)
+#
+# INST             DEPL              FORC              PCUM
+Resultat2 = [
+    1.1000000000e-01,
+    8.6799114482e-02,
+    -1.4032228873e-14,
+    0.0000000000e00,
+    1.4000000000e-01,
+    1.4609122827e-01,
+    -9.2824469740e01,
+    0.0000000000e00,
+    2.0000000000e-01,
+    2.8055552676e-01,
+    -3.6150702460e02,
+    0.0000000000e00,
+    2.1000000000e-01,
+    3.0034067224e-01,
+    -4.0013774436e02,
+    2.8553506599e-04,
+    3.0000000000e-01,
+    3.8671107827e-01,
+    -4.1439237687e02,
+    7.1558697630e-02,
+    3.7000000000e-01,
+    3.2937385365e-01,
+    -3.0581890031e02,
+    7.1558697630e-02,
+    4.5000000000e-01,
+    1.8602797962e-01,
+    -2.8125575793e01,
+    7.1558697630e-02,
+    4.6000000000e-01,
+    1.6761073273e-01,
+    -6.2172489379e-13,
+    7.1558697630e-02,
+    1.0300000000e00,
+    1.7167520924e-01,
+    -2.2574930060e-01,
+    7.1558697630e-02,
+    1.1000000000e00,
+    3.3919141520e-01,
+    -3.2490253229e02,
+    7.1558697630e-02,
+    1.1800000000e00,
+    4.2799895994e-01,
+    -4.1941926856e02,
+    1.0644074708e-01,
+    1.2200000000e00,
+    4.0626413510e-01,
+    -3.7993993146e02,
+    1.0644074708e-01,
+    1.3000000000e00,
+    2.5621674020e-01,
+    -9.5014836747e01,
+    1.0644074708e-01,
+    1.3300000000e00,
+    1.8933957833e-01,
+    -7.2475359048e-13,
+    1.0644074708e-01,
+    1.6800000000e00,
+    2.1190321577e-01,
+    -1.0411705682e01,
+    1.0644074708e-01,
+    1.7000000000e00,
+    2.2648005212e-01,
+    -3.8083640640e01,
+    1.0644074708e-01,
+    1.7700000000e00,
+    2.5076961959e-01,
+    -8.3310175096e01,
+    1.0644074708e-01,
+    1.8600000000e00,
+    2.0116828396e-01,
+    -3.0621707523e-01,
+    1.0644074708e-01,
+    2.2300000000e00,
+    2.0214768186e-01,
+    -3.0621707525e-01,
+    1.0644074708e-01,
+    2.2400000000e00,
+    2.3099863270e-01,
+    -4.7481059662e01,
+    1.0644074708e-01,
+    2.3900000000e00,
+    5.1693997509e-01,
+    -4.3497431355e02,
+    1.7971160107e-01,
+    2.5100000000e00,
+    3.2260588838e-01,
+    -7.9952519531e01,
+    1.7971160107e-01,
+    2.5200000000e00,
+    2.9351450508e-01,
+    -2.6127657932e01,
+    1.7971160107e-01,
+    3.1200000000e00,
+    2.7297884911e-01,
+    -5.6983421698e-01,
+    1.7971160107e-01,
+    3.1400000000e00,
+    3.6530546350e-01,
+    -1.5940981033e02,
+    1.7971160107e-01,
+    3.1500000000e00,
+    4.1062931322e-01,
+    -2.4330656267e02,
+    1.7971160107e-01,
+    3.1600000000e00,
+    4.5441451017e-01,
+    -3.2420129900e02,
+    1.7971160107e-01,
+    3.1700000000e00,
+    4.9594473654e-01,
+    -4.0076968403e02,
+    1.7971160107e-01,
+    3.1800000000e00,
+    5.3459401478e-01,
+    -4.3831543117e02,
+    1.9610868795e-01,
+    3.1900000000e00,
+    5.6993779192e-01,
+    -4.4407221223e02,
+    2.2489259324e-01,
+    3.2000000000e00,
+    6.0173677077e-01,
+    -4.4888334285e02,
+    2.5065113215e-01,
+    3.3800000000e00,
+    5.5199220232e-01,
+    -1.6309231474e02,
+    3.4553428838e-01,
+    3.4000000000e00,
+    4.9527706023e-01,
+    -7.4393991893e01,
+    3.4553428838e-01,
+    4.2100000000e00,
+    5.1197723773e-01,
+    -1.0413111843e02,
+    3.4553428838e-01,
+    4.2300000000e00,
+    5.9977343936e-01,
+    -2.4132662542e02,
+    3.4553428838e-01,
+    4.2700000000e00,
+    7.4931551003e-01,
+    -4.1057367741e02,
+    3.7363029461e-01,
+    4.4600000000e00,
+    6.8301654955e-01,
+    -1.1932462260e02,
+    4.9596295363e-01,
+    4.4800000000e00,
+    6.1205778686e-01,
+    -2.0500302311e01,
+    4.9596295363e-01,
+    5.2100000000e00,
+    7.3657626933e-01,
+    -1.9625334336e02,
+    4.9596295363e-01,
+    5.2300000000e00,
+    8.4509760191e-01,
+    -3.4715747832e02,
+    4.9596295363e-01,
+    5.2600000000e00,
+    9.7870705156e-01,
+    -3.8019878537e02,
+    6.0449351995e-01,
+    5.4500000000e00,
+    9.1734171314e-01,
+    -6.9231038476e01,
+    7.6447513589e-01,
+    5.4700000000e00,
+    8.4263317864e-01,
+    0.0000000000e00,
+    7.6447513589e-01,
+    6.2800000000e00,
+    1.0325949702e00,
+    -2.3265288464e02,
+    7.6447513589e-01,
+    6.3000000000e00,
+    1.1687603150e00,
+    -3.6491200917e02,
+    8.0334274116e-01,
+    6.3100000000e00,
+    1.2302524890e00,
+    -3.6056872398e02,
+    8.6564245621e-01,
+    6.5000000000e00,
+    1.3759895295e00,
+    -7.7668136388e01,
+    1.2133714165e00,
+    6.5100000000e00,
+    1.3295200818e00,
+    -1.5960910364e01,
+    1.2133714165e00,
+    7.3400000000e00,
+    1.5457176957e00,
+    -3.0974462109e02,
+    1.2133714165e00,
+    7.3500000000e00,
+    1.6181165485e00,
+    -3.1217782920e02,
+    1.2824730992e00,
+    7.3600000000e00,
+    1.6848926785e00,
+    -3.0116125118e02,
+    1.3559967163e00,
+    7.3700000000e00,
+    1.7459143675e00,
+    -2.9839602604e02,
+    1.4183294881e00,
+    7.4900000000e00,
+    1.9823640279e00,
+    -2.5862822335e02,
+    1.6813347110e00,
+    7.5400000000e00,
+    1.7962460955e00,
+    -1.4812456985e01,
+    1.6813347110e00,
+    7.5500000000e00,
+    1.7416304525e00,
+    0.0000000000e00,
+    1.6813347110e00,
+    8.3900000000e00,
+    2.0322197155e00,
+    -2.9869594104e02,
+    1.7065138650e00,
+    8.4000000000e00,
+    2.1373931202e00,
+    -2.9869594104e02,
+    1.8110274861e00,
+    8.4100000000e00,
+    2.2350606323e00,
+    -2.9869594104e02,
+    1.9080003351e00,
+    8.5300000000e00,
+    2.7024865157e00,
+    -2.7221137398e02,
+    2.3888076397e00,
+    8.5700000000e00,
+    2.5363576322e00,
+    -5.5955913836e01,
+    2.3888076397e00,
+    8.5800000000e00,
+    2.4715527165e00,
+    0.0000000000e00,
+    2.3888076397e00,
+    9.4700000000e00,
+    2.7885087574e00,
+    -2.9813858227e02,
+    2.4623451393e00,
+    9.4800000000e00,
+    2.8831848345e00,
+    -2.9813858227e02,
+    2.5561333818e00,
+    9.4900000000e00,
+    2.9678196076e00,
+    -2.9813858227e02,
+    2.6398440249e00,
+    9.5800000000e00,
+    3.2250550943e00,
+    -2.6697986047e02,
+    2.9155778710e00,
+    9.5900000000e00,
+    3.1942124341e00,
+    -2.2738274147e02,
+    2.9155778710e00,
+    9.6000000000e00,
+    3.1516939978e00,
+    -1.7221178832e02,
+    2.9155778710e00,
+    9.6100000000e00,
+    3.0979522755e00,
+    -1.0205031918e02,
+    2.9155778710e00,
+    9.6200000000e00,
+    3.0335907128e00,
+    -1.7683181055e01,
+    2.9155778710e00,
+]
+Instant = Resultat2[0::4]
+Deplace = Resultat2[1::4]
+Force = Resultat2[2::4]
+Pcumul = Resultat2[3::4]
+motclef = {}
+motclef["VALEUR"] = []
+for ii in range(len(Instant)):
+    # Pour Force
+    if abs(Force[ii]) > 1.0:
+        motclef["VALEUR"].append(
+            _F(FONCTION=FORC_2, NOM_PARA="INST", VALE_PARA=Instant[ii], VALE_CALC=Force[ii])
+        )
+    else:
+        motclef["VALEUR"].append(
+            _F(
+                FONCTION=FORC_2,
+                NOM_PARA="INST",
+                VALE_PARA=Instant[ii],
+                VALE_CALC=Force[ii],
+                CRITERE="ABSOLU",
+            )
+        )
+    # Pour Pcumul
+    if abs(Pcumul[ii]) > 0.001:
+        motclef["VALEUR"].append(
+            _F(FONCTION=PCUM_2, NOM_PARA="INST", VALE_PARA=Instant[ii], VALE_CALC=Pcumul[ii])
+        )
+    else:
+        motclef["VALEUR"].append(
+            _F(
+                FONCTION=PCUM_2,
+                NOM_PARA="INST",
+                VALE_PARA=Instant[ii],
+                VALE_CALC=Pcumul[ii],
+                CRITERE="ABSOLU",
+            )
+        )
+    # Pour Deplace
+    if abs(Deplace[ii]) > 0.001:
+        motclef["VALEUR"].append(
+            _F(FONCTION=DEPL12, NOM_PARA="INST", VALE_PARA=Instant[ii], VALE_CALC=Deplace[ii])
+        )
+    else:
+        motclef["VALEUR"].append(
+            _F(
+                FONCTION=DEPL12,
+                NOM_PARA="INST",
+                VALE_PARA=Instant[ii],
+                VALE_CALC=Deplace[ii],
+                CRITERE="ABSOLU",
+            )
+        )
+TEST_FONCTION(**motclef)
+
+"""
+# Pour l'impression des courbes
+XInstant=DEFI_LIST_REEL(VALE=Instant)
+# LIST_PARA=XInstant,
+#
+UXAN_1=RECU_FONCTION(RESULTAT=resu1, NOM_CHAM='VARI_ELGA', NOM_CMP='V2',GROUP_MA='M1',POINT=1)
+DEPL31=RECU_FONCTION(RESULTAT=resu1, NOM_CHAM='DEPL',      NOM_CMP='DX',GROUP_NO='PT3',)
+VITE_1=RECU_FONCTION(RESULTAT=resu2, NOM_CHAM='VARI_ELGA', NOM_CMP='V3',GROUP_MA='M1',POINT=1)
+#
+UXAN_2=RECU_FONCTION(RESULTAT=resu2, NOM_CHAM='VARI_ELGA', NOM_CMP='V2',GROUP_MA='M1',POINT=1)
+DEPL32=RECU_FONCTION(RESULTAT=resu2, NOM_CHAM='DEPL',      NOM_CMP='DX',GROUP_NO='PT3',)
+VITE_2=RECU_FONCTION(RESULTAT=resu2, NOM_CHAM='VARI_ELGA', NOM_CMP='V3',GROUP_MA='M1',POINT=1)
+#
+fic_courbe = './REPE_OUT/sdnd109d_filtre_%04d.dat' % (int(pas1*1000))
+unite = DEFI_FICHIER(FICHIER = fic_courbe, ACTION='ASSOCIER', TYPE='ASCII',ACCES='NEW')
+IMPR_FONCTION(UNITE=unite, FORMAT='TABLEAU', SEPARATEUR=',', FORMAT_R='E17.10',
+    COURBE=(
+        _F(FONCTION=DEPL11, LIST_PARA=XInstant,),
+        _F(FONCTION=FORC_1, LIST_PARA=XInstant,),
+        _F(FONCTION=PCUM_1, LIST_PARA=XInstant,),
+    ),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+#
+fic_courbe = './REPE_OUT/sdnd109d_filtre_%04d.dat' % (int(pas2*1000))
+unite = DEFI_FICHIER(FICHIER = fic_courbe, ACTION='ASSOCIER', TYPE='ASCII',ACCES='NEW')
+IMPR_FONCTION(UNITE=unite, FORMAT='TABLEAU', SEPARATEUR=',', FORMAT_R='E17.10',
+    COURBE=(
+        _F(FONCTION=DEPL12, LIST_PARA=XInstant,),
+        _F(FONCTION=FORC_2, LIST_PARA=XInstant,),
+        _F(FONCTION=PCUM_2, LIST_PARA=XInstant,),
+    ),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+
+fic_courbe = './REPE_OUT/sdnd109d_%04d.dat' % (int(pas1*1000))
+unite = DEFI_FICHIER(FICHIER = fic_courbe, ACTION='ASSOCIER', TYPE='ASCII',ACCES='NEW')
+IMPR_FONCTION(UNITE=unite, FORMAT='TABLEAU', SEPARATEUR=',', FORMAT_R='E17.10',
+    COURBE=(
+        _F(FONCTION=DEPL11,),
+        _F(FONCTION=FORC_1,),
+        _F(FONCTION=PCUM_1,),
+        _F(FONCTION=VITE_1,),
+        _F(FONCTION=UXAN_1,),
+        _F(FONCTION=DEPL31,),
+    ),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+#
+fic_courbe = './REPE_OUT/sdnd109d_%04d.dat' % (int(pas2*1000))
+unite = DEFI_FICHIER(FICHIER = fic_courbe, ACTION='ASSOCIER', TYPE='ASCII',ACCES='NEW')
+IMPR_FONCTION(UNITE=unite, FORMAT='TABLEAU', SEPARATEUR=',', FORMAT_R='E17.10',
+    COURBE=(
+        _F(FONCTION=DEPL12,),
+        _F(FONCTION=FORC_2,),
+        _F(FONCTION=PCUM_2,),
+        _F(FONCTION=VITE_2,),
+        _F(FONCTION=UXAN_2,),
+        _F(FONCTION=DEPL32,),
+    ),
+)
+DEFI_FICHIER(UNITE = unite, ACTION='LIBERER',)
+"""
+FIN()

@@ -1,0 +1,35 @@
+ TITRE
+* REPONSE TRANSITOIRE AVEC FLAMBEMENT DE CHOC                                   
+* VITESSE INITIALE  IMPOSEE                                                     
+ FINSF
+ %
+ COOR_3D
+ N01       0.00000000000000E+00  0.00000000000000E+00  0.00000000000000E+00
+ N02       1.00000000000000E+00  0.00000000000000E+00  0.00000000000000E+00
+ FINSF
+ %
+ SEG2    
+ ELN1     N01      N02     
+ FINSF
+ %
+ GROUP_NO
+ ENCASTRE                
+ N01     
+ FINSF
+ %
+ GROUP_NO
+ AUTRE                   
+ N02     
+ FINSF
+ %
+ GROUP_NO
+ N02                     
+ N02     
+ FINSF
+ %
+ GROUP_MA
+ STRUC                   
+ ELN1    
+ FINSF
+ %
+ FIN

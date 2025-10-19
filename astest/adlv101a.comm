@@ -1,0 +1,137 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="ALARME"), DEBUG=_F(SDVERI="OUI"))
+
+
+mesh = LIRE_MAILLAGE(FORMAT="MED")
+
+# Material properties
+water = DEFI_MATERIAU(FLUIDE=_F(CELE_R=1400.0, PESA_Z=9.81, RHO=1000.0))
+CHAMPMAT = AFFE_MATERIAU(AFFE=_F(GROUP_MA=("MAFLUIDE", "MASURF"), MATER=water), MAILLAGE=mesh)
+
+# Model with gravity
+modelWithGrav = AFFE_MODELE(
+    AFFE=(
+        _F(GROUP_MA="MASURF", MODELISATION="2D_FLUI_PESA", PHENOMENE="MECANIQUE"),
+        _F(GROUP_MA="MAFLUIDE", MODELISATION="3D_FLUIDE", PHENOMENE="MECANIQUE"),
+    ),
+    MAILLAGE=mesh,
+)
+
+rigiElemWithGrav = CALC_MATR_ELEM(CHAM_MATER=CHAMPMAT, MODELE=modelWithGrav, OPTION="RIGI_MECA")
+massElemWithGrav = CALC_MATR_ELEM(CHAM_MATER=CHAMPMAT, MODELE=modelWithGrav, OPTION="MASS_MECA")
+numeWithGrav = NUME_DDL(MATR_RIGI=rigiElemWithGrav)
+rigiAsseWithGrav = ASSE_MATRICE(MATR_ELEM=rigiElemWithGrav, NUME_DDL=numeWithGrav)
+massAsseWithGrav = ASSE_MATRICE(MATR_ELEM=massElemWithGrav, NUME_DDL=numeWithGrav)
+
+
+TABMODPE = INFO_MODE(
+    FREQ=(1100.0, 1800.0),
+    MATR_MASS=massAsseWithGrav,
+    MATR_RIGI=rigiAsseWithGrav,
+    TYPE_MODE="DYNAMIQUE",
+)
+
+# Modes de ballottement
+modesBalWithGrav = CALC_MODES(
+    CALC_FREQ=_F(FREQ=(0.89, 1.39, 1.72, 2.0, 2.2, 2.79, 2.8, 2.88)),
+    MATR_MASS=massAsseWithGrav,
+    MATR_RIGI=rigiAsseWithGrav,
+    OPTION="PROCHE",
+)
+
+# Modes acoustiques
+modesAcouWithGrav = CALC_MODES(
+    CALC_FREQ=_F(FREQ=(1100.0, 1500.0)),
+    MATR_MASS=massAsseWithGrav,
+    MATR_RIGI=rigiAsseWithGrav,
+    OPTION="BANDE",
+    SOLVEUR_MODAL=_F(COEF_DIM_ESPACE=4, NMAX_ITER_SOREN=30),
+    VERI_MODE=_F(STOP_ERREUR="NON"),
+)
+
+# Model without gravity
+modelWithoutGrav = AFFE_MODELE(
+    AFFE=_F(GROUP_MA="MAFLUIDE", MODELISATION="3D_FLUIDE", PHENOMENE="MECANIQUE"), MAILLAGE=mesh
+)
+
+SURLIBSPC = AFFE_CHAR_CINE(
+    MECA_IMPO=_F(GROUP_NO=("NOSURF",), PHI=0.0, PRES=0.0), MODELE=modelWithoutGrav
+)
+
+ASSEMBLAGE(
+    CHAM_MATER=CHAMPMAT,
+    CHAR_CINE=SURLIBSPC,
+    MATR_ASSE=(
+        _F(MATRICE=CO("rigiAsseWithoutGrav"), OPTION="RIGI_MECA"),
+        _F(MATRICE=CO("massAsseWithoutGrav"), OPTION="MASS_MECA"),
+    ),
+    MODELE=modelWithoutGrav,
+    NUME_DDL=CO("NUSPC"),
+)
+
+# Modes acoustiques (sans gravité)
+modesAcouWithoutGrav = CALC_MODES(
+    CALC_FREQ=_F(FREQ=(1100.0, 1500.0)),
+    MATR_MASS=massAsseWithoutGrav,
+    MATR_RIGI=rigiAsseWithoutGrav,
+    OPTION="BANDE",
+    SOLVEUR_MODAL=_F(COEF_DIM_ESPACE=4, METHODE="SORENSEN", NMAX_ITER_SOREN=40),
+    VERI_MODE=_F(STOP_ERREUR="NON"),
+)
+
+
+SURLIBSPM = AFFE_CHAR_MECA(
+    DDL_IMPO=_F(GROUP_NO=("NOSURF",), PHI=0.0, PRES=0.0), MODELE=modelWithoutGrav
+)
+
+ASSEMBLAGE(
+    CHAM_MATER=CHAMPMAT,
+    CHARGE=SURLIBSPM,
+    MATR_ASSE=(
+        _F(MATRICE=CO("MATRASP"), OPTION="RIGI_MECA"),
+        _F(MATRICE=CO("MATMASP"), OPTION="MASS_MECA"),
+    ),
+    MODELE=modelWithoutGrav,
+    NUME_DDL=CO("NUSPC"),
+)
+
+MATRMASP = COMB_MATR_ASSE(
+    COMB_R=(_F(COEF_R=1.0, MATR_ASSE=MATRASP), _F(COEF_R=1e-09, MATR_ASSE=MATMASP))
+)
+
+
+tableModesWithGrav = INFO_MODE(
+    FREQ=(1100.0, 1800.0), MATR_MASS=MATMASP, MATR_RIGI=MATRMASP, TYPE_MODE="DYNAMIQUE"
+)
+
+
+MODACUSP = CALC_MODES(
+    CALC_FREQ=_F(FREQ=(1100.0, 1800.0)),
+    MATR_MASS=MATMASP,
+    MATR_RIGI=MATRMASP,
+    OPTION="BANDE",
+    SOLVEUR=_F(METHODE="MUMPS"),
+    SOLVEUR_MODAL=_F(COEF_DIM_ESPACE=4, METHODE="SORENSEN", NMAX_ITER_SOREN=40),
+    VERI_MODE=_F(STOP_ERREUR="NON"),
+)
+
+FIN()
+#

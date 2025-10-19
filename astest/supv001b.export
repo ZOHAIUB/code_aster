@@ -1,0 +1,11 @@
+P time_limit 60
+P memory_limit 256
+P ncpus 1
+P mpi_nbcpu 1
+P mpi_nbnoeud 1
+P testlist submit verification sequential
+
+F comm supv001b.comm D 1
+F comm supv001b.com1 D 1
+F comm supv001b.com2 D 1
+F nom supv001b_imp.py D 0

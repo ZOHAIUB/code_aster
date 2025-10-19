@@ -1,0 +1,15 @@
+P time_limit 60
+P memory_limit 256
+P ncpus 1
+P mpi_nbcpu 1
+P mpi_nbnoeud 1
+P testlist verification sequential
+
+F comm efica01a.comm D 1
+F comm efica01a.com1 D 1
+F comm efica01a.com2 D 1
+F comm efica01a.com3 D 1
+F mail sdnd102a.mail D 20
+F mail sdnd102b.mail D 21
+F mail ssnv160c.mail D 22
+F nom efica01a.data D 0

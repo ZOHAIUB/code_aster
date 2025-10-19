@@ -1,0 +1,148 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+import os
+import os.path as osp
+import platform
+import shutil
+from functools import partial
+
+from waflib import Logs, Task, TaskGen, Utils
+
+from waftools.wafutils import add_to_env_paths, exec_pyaster
+
+
+def build(self):
+    env = self.all_envs[self.variant]  # .derive()
+    if self.variant == "debug":
+        env.OPTDEBUG = "-g"
+    if self.cmd.startswith("uninstall"):
+        elem = osp.join(env.ASTERLIBDIR, "elem.1")
+        try:
+            os.remove(elem)
+        except OSError:
+            pass
+        return
+
+    elem1 = self.path.find_or_declare("elem.1")
+    self(
+        features="catalo",
+        name="cataelem",
+        target=elem1,
+        env=env,
+        vars=["CATALO_CMD"],
+        use="asterlib",
+        install_path=env.ASTERLIBDIR,
+    )
+
+
+@TaskGen.feature("catalo")
+@TaskGen.before("process_source")
+def pre_build_catalo(self):
+    catalo = self.path
+    deps = catalo.ant_glob("**/*.py")
+    asterlib = [
+        task.outputs
+        for task in self.bld.get_tgen_by_name("asterlib").tasks
+        if task.__class__.__name__ == "cxxshlib"
+    ]
+    deps.extend(asterlib[0])
+    catalo.get_bld().mkdir()
+    ojb = catalo.get_bld().make_node("cata_ele.ojb")
+    self.create_task("printcata", src=[catalo] + deps, tgt=ojb)
+    self.source = [ojb]  # bypass the execution of process_source
+
+
+class printcata(Task.Task):
+    def run(self):
+        """Execute the command"""
+        environ = os.environ.copy()
+        # add src/code_aster + catalo in PYTHONPATH
+        add_to_env_paths(self.generator.bld, environ, "PYTHONPATH", self.env["CODEASTERPATH"])
+        add_to_env_paths(self.generator.bld, environ, "PYTHONPATH", self.env["CATALOPATH"])
+        exec_pyaster(
+            self.generator.bld,
+            osp.join(self.env["CATALOPATH"], "build_cata.py"),
+            env=environ,
+            cwd=self.outputs[0].parent.abspath(),
+            args=[self.env["OPTDEBUG"] or "", "-o", self.outputs[0].abspath()],
+            for_catalo=True,
+        )
+
+    def sig_explicit_deps(self):
+        self.dep_nodes[:] = self.inputs[1:]
+        catalo = self.inputs[0]
+        # put catalo/*.py files into self.inputs in order to let the
+        # original sig_explicit_deps compute their signature which is
+        # used to rebuild on any changes.
+        self.inputs[:] = catalo.ant_glob("**/*.py")
+        super(printcata, self).sig_explicit_deps()
+        self.inputs[:] = [catalo]
+
+
+@TaskGen.extension(".ojb")
+def buildcata(self, node):
+    if not getattr(self.bld, "is_install", None) or not getattr(self, "install_path", None):
+        return
+    # install_path = osp.join(self.install_path, self.target
+    post = partial(build_cata_ele, ojb=node, elem1=self.target, install_path=self.install_path)
+    self.bld.add_post_fun(post)
+
+
+def build_cata_ele(self, ojb, elem1, install_path):
+    """Build the catalog of elements"""
+    builddir = elem1.parent.get_bld().abspath()
+    # I added this test on timestamps because I don't understand why it is rerun
+    # if 'asterlib' and *.py did not change
+    stime = os.stat(ojb.abspath()).st_mtime_ns
+    elem1path = elem1.abspath()
+    skipped = osp.isfile(elem1path) and os.stat(elem1path).st_mtime_ns > stime
+    if not skipped:
+        Logs.info(
+            f"+ build the elements catalog {elem1.name} using installed " f"aster (from {ojb.name})"
+        )
+        # generate the command file
+        comm = osp.join(builddir, "fort.1")
+        with open(comm, "w") as fcomm:
+            content = os.linesep.join(
+                [
+                    "from code_aster.Commands import DEBUT, MAJ_CATA, FIN",
+                    "DEBUT(CATALOGUE=_F(FICHIER='CATAELEM', UNITE=4), ",
+                    "      ERREUR=_F(ERREUR_F='ABORT'), MODE='DEBUT')",
+                    "MAJ_CATA(ELEMENT=_F())",
+                    "FIN()",
+                    "",
+                ]
+            )
+            fcomm.write(content)
+
+        # .ojb -> fort.4
+        shutil.copy(ojb.abspath(), osp.join(builddir, "fort.4"))
+
+        # memory value (not allocated, just a limit)
+        memlim = 4096 + int(float(self.env["addmem"]))
+        if "32" in platform.architecture()[0]:
+            memlim = 2047
+        exec_pyaster(
+            self, comm, cwd=builddir, args=["--memory={0}".format(memlim)], for_catalo=True
+        )
+
+    dest = osp.join(install_path, osp.basename(elem1.name))
+    shutil.copy(elem1path, dest)
+    os.chmod(dest, Utils.O644)

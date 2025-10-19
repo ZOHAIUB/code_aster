@@ -1,0 +1,227 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+
+# DEFINITION DU PROBLEME
+# =======================
+
+MA0 = LIRE_MAILLAGE(FORMAT="MED")
+
+MA = CREA_MAILLAGE(MAILLAGE=MA0, MODI_HHO=_F(TOUT="OUI"), INFO=1)
+
+E = 200000.0
+
+MATERIAU = DEFI_MATERIAU(
+    ELAS=_F(E=E, NU=0.3), ECRO_LINE=_F(D_SIGM_EPSI=1000.0, SY=200.0), HHO=_F(COEF_STAB=50 * E)
+)
+
+CH_MATER = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MATERIAU))
+
+INSTANTS = DEFI_LIST_REEL(
+    DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=0.1, NOMBRE=8), _F(JUSQU_A=1.0, NOMBRE=8))
+)
+
+RAMPE = DEFI_FONCTION(NOM_PARA="INST", VALE=(0.0, 0.0, 1.0, 1.0))
+
+DEFLIST = DEFI_LIST_INST(
+    DEFI_LIST=_F(LIST_INST=INSTANTS),
+    ECHEC=_F(
+        EVENEMENT="ERREUR", ACTION="DECOUPE", SUBD_METHODE="MANUEL", SUBD_PAS=4, SUBD_PAS_MINI=0.001
+    ),
+)
+
+coor1 = [0.0, 1.53224, 3.2689, 3.80797, 4.40378, 5.0]
+
+Test1 = [231.59287144793058]
+
+Test2 = [259.21795342607265]
+
+Test3 = [300.6155217207124]
+
+Test4 = [268.3200324410187]
+
+Test5 = [181.97824998122624]
+
+Test6 = [440.5562769210154]
+
+Test7 = [-0.04698443770157368]
+
+
+MO = AFFE_MODELE(
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="3D_HHO", FORMULATION="LINEAIRE"),
+)
+
+SYM = AFFE_CHAR_CINE(
+    MODELE=MO,
+    MECA_IMPO=(
+        _F(GROUP_MA=("LCD_FACE", "LBC_FACE"), DY=0.0),
+        _F(GROUP_MA=("LDE_FACE", "LEF_FACE"), DX=0.0),
+    ),
+)
+
+APPUI = AFFE_CHAR_CINE(MODELE=MO, MECA_IMPO=_F(TOUT="OUI", DZ=0.0))
+
+TRAC = AFFE_CHAR_CINE(MODELE=MO, MECA_IMPO=_F(GROUP_MA="LFG_FACE", DY=0.1))
+
+# CALCUL
+# ========
+
+RESU = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CH_MATER,
+    EXCIT=(_F(CHARGE=TRAC, FONC_MULT=RAMPE), _F(CHARGE=SYM), _F(CHARGE=APPUI)),
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE"),
+    INCREMENT=_F(LIST_INST=DEFLIST),
+    SOLVEUR=_F(METHODE="MUMPS"),
+    NEWTON=_F(REAC_ITER=1),
+    ARCHIVAGE=_F(LIST_INST=INSTANTS),
+)
+
+# POST TRAITEMENT
+# =================
+
+RESU = CALC_CHAMP(reuse=RESU, RESULTAT=RESU, CONTRAINTE=("SIGM_ELNO", "SIGM_NOEU"))
+
+S_T = MACR_LIGN_COUPE(
+    RESULTAT=RESU,
+    INST=1.0,
+    NOM_CHAM="SIGM_NOEU",
+    LIGN_COUPE=(
+        _F(
+            TYPE="SEGMENT",
+            NB_POINTS=2,
+            COOR_ORIG=(coor1[0], 1.0, 0.0),
+            COOR_EXTR=(coor1[1], 1.0, 0.0),
+        ),
+        _F(
+            TYPE="SEGMENT",
+            NB_POINTS=2,
+            COOR_ORIG=(coor1[1], 1.0, 0.0),
+            COOR_EXTR=(coor1[2], 1.0, 0.0),
+        ),
+        _F(
+            TYPE="SEGMENT",
+            NB_POINTS=2,
+            COOR_ORIG=(coor1[2], 1.0, 0.0),
+            COOR_EXTR=(coor1[3], 1.0, 0.0),
+        ),
+        _F(
+            TYPE="SEGMENT",
+            NB_POINTS=2,
+            COOR_ORIG=(coor1[3], 1.0, 0.0),
+            COOR_EXTR=(coor1[4], 1.0, 0.0),
+        ),
+        _F(
+            TYPE="SEGMENT",
+            NB_POINTS=2,
+            COOR_ORIG=(coor1[4], 1.0, 0.0),
+            COOR_EXTR=(coor1[5], 1.0, 0.0),
+        ),
+    ),
+)
+
+# TESTS
+# =======
+
+# ON TESTE PAR RAPPORT A LA MODELISATION B : ELEMENTS QUASI-INCOMPRESSIBLES
+
+TEST_TABLE(
+    REFERENCE="AUTRE_ASTER",
+    TABLE=S_T,
+    NOM_PARA="SIYY",
+    FILTRE=(_F(NOM_PARA="COOR_X", VALE=coor1[0]), _F(NOM_PARA="ABSC_CURV", VALE=0.0)),
+    VALE_REFE=234.12162679423,
+    VALE_CALC=Test1,
+    PRECISION=3.0e-2,
+)
+
+TEST_TABLE(
+    REFERENCE="AUTRE_ASTER",
+    TABLE=S_T,
+    NOM_PARA="SIYY",
+    FILTRE=(_F(NOM_PARA="COOR_X", VALE=coor1[1]), _F(NOM_PARA="ABSC_CURV", VALE=0.0)),
+    VALE_REFE=256.98783319353,
+    VALE_CALC=Test2,
+    PRECISION=2.0e-2,
+)
+
+TEST_TABLE(
+    REFERENCE="AUTRE_ASTER",
+    TABLE=S_T,
+    NOM_PARA="SIYY",
+    FILTRE=(_F(NOM_PARA="COOR_X", VALE=coor1[2]), _F(NOM_PARA="ABSC_CURV", VALE=0.0)),
+    VALE_REFE=300.28717383814,
+    VALE_CALC=Test3,
+    PRECISION=1.0e-2,
+)
+
+TEST_TABLE(
+    REFERENCE="AUTRE_ASTER",
+    TABLE=S_T,
+    NOM_PARA="SIYY",
+    FILTRE=(_F(NOM_PARA="COOR_X", VALE=coor1[3]), _F(NOM_PARA="ABSC_CURV", VALE=0.0)),
+    VALE_REFE=267.55482695734,
+    VALE_CALC=Test4,
+    PRECISION=1.0e-2,
+)
+
+TEST_TABLE(
+    REFERENCE="AUTRE_ASTER",
+    TABLE=S_T,
+    NOM_PARA="SIYY",
+    FILTRE=(_F(NOM_PARA="COOR_X", VALE=coor1[4]), _F(NOM_PARA="ABSC_CURV", VALE=0.0)),
+    VALE_REFE=183.4984987651,
+    VALE_CALC=Test5,
+    PRECISION=0.33,
+)
+
+# --------------------------------------------------------------------------------
+#
+#  TEST SUR LES CONTRAINTES AU POINT B
+
+TEST_RESU(
+    RESU=_F(
+        INST=1.0,
+        RESULTAT=RESU,
+        NOM_CHAM="SIGM_ELNO",
+        GROUP_NO="N5",
+        NOM_CMP="SIYY",
+        VALE_CALC=Test6,
+        CRITERE="RELATIF",
+        GROUP_MA="M1294",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        INST=1.0,
+        RESULTAT=RESU,
+        NOM_CHAM="SIGM_ELNO",
+        GROUP_NO="N5",
+        NOM_CMP="SIXX",
+        VALE_CALC=Test7,
+        CRITERE="RELATIF",
+        GROUP_MA="M1294",
+    )
+)
+
+
+FIN()

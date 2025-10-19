@@ -1,0 +1,280 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+from code_aster.Commands import *
+from code_aster import CA
+
+DEBUT(CODE="OUI", ERREUR=_F(ERREUR_F="EXCEPTION", ALARME="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+
+N = 0.4
+P0 = -5.0e4
+PREF = -1.0e6
+
+# modules mecaniques [kPa]
+K = 516.2e6 * (P0 / PREF) ** N
+G = 238.2e6 * (P0 / PREF) ** N
+
+# =>
+YOUNG = 9.0 * K * G / (3.0 * K + G)
+POISSON = (3.0 * K - 2.0 * G) / (6.0 * K + 2.0 * G)
+
+HypDistortion = 2.0e-4
+HypExponent = 0.78
+
+try:
+    DEFI_MATERIAU(
+        ELAS=_F(K=K, MU=G * 1.01),
+        Iwan=_F(
+            YoungModulus=YOUNG,
+            PoissonRatio=POISSON,
+            HypDistortion=HypDistortion,
+            HypExponent=HypExponent,
+        ),
+    )
+    assert False, "invalid parameters must raise an exception!"
+except CA.AsterError as exc:
+    assert exc.id_message == "MATERIAL1_13", f"unexpected exception {exc}"
+
+MATE = DEFI_MATERIAU(
+    ELAS=_F(K=K, MU=G),
+    Iwan=_F(
+        YoungModulus=YOUNG,
+        PoissonRatio=POISSON,
+        HypDistortion=HypDistortion,
+        HypExponent=HypExponent,
+    ),
+)
+
+
+# declaration des tables (TABLE_RESU) qui sortiront de la macro - ESSAI_CISA_C
+TCISA1 = CO("TCISA1")
+TBILAN = CO("TBILAN")
+# donnees de l'essai
+p_confCISA = 50000.0
+gamma_impCISA = (4e-5, 4e-4, 4e-3)
+nb_cy = 1
+
+
+CALC_ESSAI_GEOMECA(
+    INFO=1,
+    MATER=MATE,
+    COMPORTEMENT=_F(RELATION="Iwan", RESI_INTE=1e-12, ITER_INTE_MAXI=10),
+    CONVERGENCE=_F(RESI_GLOB_RELA=1.0e-8, ITER_GLOB_MAXI=20),
+    ESSAI_CISA_DR_C_D=_F(
+        PRES_CONF=p_confCISA,
+        GAMMA_IMPOSE=gamma_impCISA,
+        GAMMA_ELAS=1.0e-10,
+        NB_INST=200,
+        TYPE_CHARGE="TRIANGULAIRE",
+        NB_CYCLE=nb_cy,
+        TABLE_RESU=(TCISA1, TBILAN),
+    ),
+)
+
+# ---------------------
+# comparaison aux résultats de ssnv205b
+
+# tableau avec les cycles de chargement tau-gamma
+IMPR_TABLE(TABLE=TCISA1, UNITE=28, FORMAT="TABLEAU", SEPARATEUR=",")
+
+
+# tableau avec les donnes de G, G/Gmax et D pour chaque GAMMA_IMPOSE
+IMPR_TABLE(TABLE=TBILAN, UNITE=29, FORMAT="TABLEAU", SEPARATEUR=",")
+
+
+# COMPARAISON AUX RESULTATS DE SSNV205B
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-1298.64364426,
+    VALE_REFE=-1297.65875776,
+    NOM_PARA="SIG_XY_1",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_1", VALE=5.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-2345.43266465,
+    VALE_REFE=-2343.93741663,
+    NOM_PARA="SIG_XY_1",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_1", VALE=10.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=2345.43266465,
+    VALE_REFE=2343.86416193,
+    NOM_PARA="SIG_XY_1",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_1", VALE=30.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-2345.43266465,
+    VALE_REFE=-2343.86423947,
+    NOM_PARA="SIG_XY_1",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_1", VALE=50.0),
+)
+####################################################################
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-7538.26657422,
+    VALE_REFE=-7532.17502946,
+    NOM_PARA="SIG_XY_2",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_2", VALE=5.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-10857.8105579,
+    VALE_REFE=-10852.9781787,
+    NOM_PARA="SIG_XY_2",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_2", VALE=10.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=4218.72259055,
+    VALE_REFE=4213.07055785,
+    NOM_PARA="SIG_XY_2",
+    TABLE=TCISA1,
+    PRECISION=6.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_2", VALE=20.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=10857.8105579,
+    VALE_REFE=10852.9310857,
+    NOM_PARA="SIG_XY_2",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_2", VALE=30.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-4218.72259055,
+    VALE_REFE=-4213.07619046,
+    NOM_PARA="SIG_XY_2",
+    TABLE=TCISA1,
+    PRECISION=6.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_2", VALE=40.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-10857.8105579,
+    VALE_REFE=-10852.9310864,
+    NOM_PARA="SIG_XY_2",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_2", VALE=50.0),
+)
+
+####################################################################
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-19277.0089364,
+    VALE_REFE=-19270.5640459,
+    NOM_PARA="SIG_XY_3",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_3", VALE=5.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-23319.3757074,
+    VALE_REFE=-23316.7694931,
+    NOM_PARA="SIG_XY_3",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_3", VALE=10.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=15234.6421655,
+    VALE_REFE=15228.3800807,
+    NOM_PARA="SIG_XY_3",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_3", VALE=20.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=23319.3757074,
+    VALE_REFE=23315.5132772,
+    NOM_PARA="SIG_XY_3",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_3", VALE=30.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-15234.6421656,
+    VALE_REFE=-15228.1639186,
+    NOM_PARA="SIG_XY_3",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_3", VALE=40.0),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_CALC=-23319.3757075,
+    VALE_REFE=-23315.469541,
+    NOM_PARA="SIG_XY_3",
+    TABLE=TCISA1,
+    PRECISION=5.0e-3,
+    FILTRE=_F(CRITERE="ABSOLU", PRECISION=9.0e-05, NOM_PARA="INST_3", VALE=50.0),
+)
+
+FIN()

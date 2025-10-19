@@ -1,0 +1,181 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+import os.path as osp
+
+from waflib import Configure, Errors, Utils
+
+
+def options(self):
+    self.load("compiler_cxx")
+
+
+def configure(self):
+    self.load("compiler_cxx")
+    self.check_cxx_compiler_flags()
+    self.check_bibcxx_depends()
+    self.check_cxx_types()
+
+    cxxpath = self.path.get_src().abspath()
+    self.env.append_value("INCLUDES_BIBCXX", cxxpath)
+
+    incpath = osp.join(cxxpath, "include")
+    self.env.append_value("INCLUDES_BIBCXX", incpath)
+
+    cpath = self.path.find_node("../bibc").abspath()
+    incpath = osp.join(cpath, "include")
+    self.env.append_value("INCLUDES_BIBCXX", incpath)
+
+
+def build(self):
+    env = self.all_envs[self.variant]
+    get_srcs = self.path.get_src().ant_glob
+
+    if env.BUILD_MFRONT:
+        paths = get_srcs("mfront", src=True, dir=True)
+        paths = [d.abspath() for d in paths]
+        env.append_value("INCLUDES", paths)
+        self(
+            features="cxx",
+            name="astermfront",
+            source=get_srcs("MFront/*.cxx"),
+            env=env.derive(),
+            use=["BIBCXX", "PYBIND11", "MFRONT", "PYEXT", "CXX"],
+        )
+
+    self(
+        features=("cxx" if self.env.ASTER_PLATFORM_MINGW else "cxx cxxshlib"),
+        name="asterbibcxx",
+        source=get_srcs("**/*.cxx", excl="MFront/*.cxx"),
+        target="bibcxx",
+        rpath="$ORIGIN",
+        use=[
+            "PYEXT",
+            "PYBIND11",
+            "NUMPY",
+            "CXX",
+            "BIBCXX",
+            "HDF5",
+            "MED",
+            "MGIS",
+            "METIS",
+            "PARMETIS",
+            "SCOTCH",
+            "PETSC",
+        ],
+        env=env.derive(),
+        install_path=env.ASTERLIBDIR,
+    )
+
+
+###############################################################################
+@Configure.conf
+def check_bibcxx_depends(self):
+    """check dependencies of bibcxx"""
+    self.check_cxx(uselib_store="CXX", lib="stdc++")
+    if self.env.CC_NAME.lower() == "gcc" and int(self.env.CC_VERSION[0] or 0) < 9:
+        self.check_cxx(uselib_store="CXX", lib="stdc++fs")
+
+
+@Configure.conf
+def check_cxx_compiler_flags(self):
+    """check C++ compiler flags"""
+    # compiler independent (icpc/icpx & g++)
+    self.check_cxx_compiler_options("-fPIC")
+    # self.check_cxx_compiler_options("-fno-lto")
+    try:
+        self.check_cxx_compiler_options("-std=c++20", optional=False)
+    except Errors.ConfigurationError:
+        # for GCC 9 and earlier
+        self.check_cxx_compiler_options("-std=c++2a")
+    # FIXME: should globally add -fvisibility-hidden
+    self.check_cxx_compiler_options("-Wno-attributes")
+    # New in 12.x: https://github.com/pybind/pybind11/issues/5224
+    # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=103483: same bug?
+    # Suppose to be fixed in 13.x
+    if self.env.CC_NAME.lower() == "gcc" and int(self.env.CC_VERSION[0] or 0) == 12:
+        self.check_cxx_compiler_options("-Wno-array-bounds")
+        self.check_cxx_compiler_options("-Wno-stringop-overread")
+    self.start_msg("C++ compiler flags")
+    self.end_msg(self.env["CXXFLAGS"])
+
+
+@Configure.conf
+def check_cxx_compiler_options(self, options, optional=True):
+    """Check C++ compiler options"""
+    # do not use mandatory argument as it is consumed by 'Configure.conf' decorator
+    if type(options) not in (list, tuple):
+        options = [options]
+    self.start_msg("Checking for C++ option")
+    if self.check_cxx(cxxflags=options, mandatory=False):
+        self.env.append_unique("CXXFLAGS", options)
+        self.end_msg("yes (%s)" % " ".join(options))
+    else:
+        self.end_msg("no (%s)" % " ".join(options), "YELLOW")
+        if not optional:
+            raise Errors.ConfigurationError(f"unsupported options: {options}")
+
+
+@Configure.conf
+def check_optimization_cxxflags(self):
+    self.setenv("debug")
+    self.start_msg("Setting C++ debug flags")
+    self.define("ASTER_DEBUG_CXX", 1)
+    self.remove_optflags("CXXFLAGS")
+    flags = ["-g", "-O0"] + Utils.to_list(self.env["CXXFLAGS_ASTER_DEBUG"])
+    if self.options.enable_coverage:
+        flags.append("--coverage")
+        self.env.append_unique("LINKFLAGS", "--coverage")
+    if self.options.enable_asan:
+        flags.extend(["-fsanitize=address", "-fno-omit-frame-pointer"])
+        self.env.append_unique("LINKFLAGS", ["-fsanitize=address", "-fno-omit-frame-pointer"])
+    self.env.append_unique("CXXFLAGS", flags)
+    self.end_msg(flags)
+
+    self.setenv("release")
+    self.start_msg("Setting C++ optimization flags")
+    flags = ["-O2"]
+    self.env.append_unique("CXXFLAGS", flags)
+    self.end_msg(flags)
+
+
+@Configure.conf
+def check_cxx_types(self):
+    """Check C++ types"""
+    self.check_sizeof_bool()
+
+
+@Configure.conf
+def check_sizeof_bool(self):
+    fragment = r"""
+#include <stdio.h>
+int main(void){
+    bool logical;
+    printf("%d", (int)sizeof(logical));
+    return 0;
+}"""
+    self.code_checker(
+        None,
+        self.check_cxx,
+        fragment,
+        "Checking size of C++ bool",
+        "unexpected value for sizeof(bool): %(size)s",
+        into=(1,),
+    )
+    self.define("ASTER_C_FORTRAN_LOGICAL", "char", quote=False)

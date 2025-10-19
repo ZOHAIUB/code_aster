@@ -1,0 +1,160 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: david.haboussa at edf.fr
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+plasticity = CREA_LIB_MFRONT(NOM_COMPOR="Plasticity", UNITE_MFRONT=38)
+
+MA = LIRE_MAILLAGE(FORMAT="ASTER")
+
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="3D"))
+
+
+ACIER = DEFI_MATERIAU(
+    ELAS=_F(E=200000.0, NU=0.3),
+    ECRO_LINE=_F(D_SIGM_EPSI=2000, SY=1000.0),
+    MFRONT=_F(LISTE_COEF=(1000.0, 2000.0, 200000.0, 0.3)),
+)
+
+L_INST = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=2.00, NOMBRE=20),))
+
+F_CHAR = DEFI_FONCTION(NOM_PARA="INST", PROL_DROITE="CONSTANT", VALE=(0.0, 0.0, 2.0, 290))
+
+
+CHP_MATT = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=ACIER))
+
+
+CHR_LIAI = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=(
+        _F(GROUP_NO="NO2", DX=0.0, DY=0.0, DZ=0.0),
+        _F(GROUP_NO="NO6", DX=0.0, DY=0.0),
+        _F(GROUP_NO="NO1", DX=0.0, DZ=0.0),
+        _F(GROUP_NO=("NO9", "NO13", "NO14", "NO5", "NO17"), DX=0.0),
+    ),
+)
+
+CHR_TRAC = AFFE_CHAR_MECA(MODELE=MO, FACE_IMPO=_F(GROUP_MA="MA2", DX=1.0))
+
+###################################################
+# CALCUL ET TEST AVEC LES DEFORMATIONS LOGARITHMIQUE
+LOG = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CHP_MATT,
+    EXCIT=(_F(CHARGE=CHR_LIAI), _F(CHARGE=CHR_TRAC, FONC_MULT=F_CHAR, TYPE_CHARGE="DIDI")),
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_LINE", DEFORMATION="GDEF_LOG"),
+    INCREMENT=_F(LIST_INST=L_INST),
+    NEWTON=_F(MATRICE="TANGENTE", PREDICTION="EXTRAPOLE", REAC_ITER=1),
+    CONVERGENCE=_F(RESI_GLOB_RELA=1.0e-6, ITER_GLOB_MAXI=50),
+    RECH_LINEAIRE=_F(ITER_LINE_MAXI=3),
+    SOLVEUR=_F(RESI_RELA=1.0e-6),
+)
+
+LOGMF = STAT_NON_LINE(
+    MODELE=MO,
+    CHAM_MATER=CHP_MATT,
+    EXCIT=(_F(CHARGE=CHR_LIAI), _F(CHARGE=CHR_TRAC, FONC_MULT=F_CHAR, TYPE_CHARGE="DIDI")),
+    COMPORTEMENT=_F(RELATION="MFRONT", COMPOR_MFRONT=plasticity, DEFORMATION="GDEF_LOG"),
+    INCREMENT=_F(LIST_INST=L_INST),
+    NEWTON=_F(MATRICE="TANGENTE", PREDICTION="EXTRAPOLE", REAC_ITER=1),
+    CONVERGENCE=_F(RESI_GLOB_RELA=1.0e-6, ITER_GLOB_MAXI=50),
+    RECH_LINEAIRE=_F(ITER_LINE_MAXI=3),
+    SOLVEUR=_F(RESI_RELA=1.0e-6),
+)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            INST=2.0,
+            RESULTAT=LOG,
+            NOM_CHAM="DEPL",
+            GROUP_NO="NO8",
+            NOM_CMP="DX",
+            VALE_CALC=290.000000000,
+            VALE_REFE=290.0,
+            REFERENCE="ANALYTIQUE",
+        ),
+        _F(
+            INST=2.0,
+            POINT=1,
+            RESULTAT=LOG,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            VALE_CALC=1.49479541e03,
+            VALE_REFE=1495.0,
+            REFERENCE="ANALYTIQUE",
+            GROUP_MA="MA1",
+        ),
+        _F(
+            INST=2.0,
+            POINT=1,
+            RESULTAT=LOG,
+            NOM_CHAM="VARI_ELGA",
+            NOM_CMP="V1",
+            VALE_CALC=0.247145796,
+            VALE_REFE=0.2475,
+            REFERENCE="ANALYTIQUE",
+            PRECISION=0.002,
+            GROUP_MA="MA1",
+        ),
+    )
+)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            INST=2.0,
+            RESULTAT=LOGMF,
+            NOM_CHAM="DEPL",
+            GROUP_NO="NO8",
+            NOM_CMP="DX",
+            VALE_CALC=290.000000000,
+            VALE_REFE=290.0,
+            REFERENCE="AUTRE_ASTER",
+        ),
+        _F(
+            INST=2.0,
+            POINT=1,
+            RESULTAT=LOGMF,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            VALE_CALC=1494.79551526,
+            VALE_REFE=1.49479541e03,
+            REFERENCE="AUTRE_ASTER",
+            GROUP_MA="MA1",
+        ),
+        _F(
+            INST=2.0,
+            POINT=1,
+            RESULTAT=LOGMF,
+            NOM_CHAM="VARI_ELGA",
+            NOM_CMP="V7",
+            VALE_CALC=0.247145796467,
+            VALE_REFE=0.247145796,
+            REFERENCE="AUTRE_ASTER",
+            GROUP_MA="MA1",
+        ),
+    )
+)
+
+FIN()

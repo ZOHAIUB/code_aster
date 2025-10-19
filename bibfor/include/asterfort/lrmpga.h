@@ -1,0 +1,39 @@
+! --------------------------------------------------------------------
+! Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+! This file is part of code_aster.
+!
+! code_aster is free software: you can redistribute it and/or modify
+! it under the terms of the GNU General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version.
+!
+! code_aster is distributed in the hope that it will be useful,
+! but WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! GNU General Public License for more details.
+!
+! You should have received a copy of the GNU General Public License
+! along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+! --------------------------------------------------------------------
+!
+interface
+    subroutine lrmpga(fileUnit, ligrel, MEDFieldName, nbCell, pgmail,&
+                      pgmmil, spmmil, ntypel, npgmax, indpg,&
+                      numpt, numord, option, param, nomaas)
+        integer(kind=8) :: npgmax
+        integer(kind=8) :: ntypel
+        integer(kind=8) :: nbCell
+        integer(kind=8) :: fileUnit
+        character(len=19) :: ligrel
+        character(len=*) :: MEDFieldName
+        integer(kind=8) :: pgmail(nbCell)
+        integer(kind=8) :: pgmmil(nbCell)
+        integer(kind=8) :: spmmil(nbCell)
+        integer(kind=8) :: indpg(ntypel, npgmax)
+        integer(kind=8) :: numpt
+        integer(kind=8) :: numord
+        character(len=24) :: option
+        character(len=8) :: param
+        character(len=8) :: nomaas
+    end subroutine lrmpga
+end interface

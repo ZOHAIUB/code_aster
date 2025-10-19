@@ -1,0 +1,213 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: mathieu.courtois at edf.fr
+
+#       optimisation du rayon de courbure
+#
+# Cet exemple illustre l'utilisation du langage Python pour optimiser
+# le rayon de courbure d'une tuyauterie. Il permet :
+#
+#     - De modifier de la geometrie
+#     - D'effectuer le maillage avec GMSH
+#     - D'evaluer un critère d'arrêt apres calculs
+#     - De lancer le post-traitement interactif
+
+import os
+from math import pi
+
+
+from code_aster.Utilities import ExecutionParameter
+from code_aster.Commands import *
+from code_aster import CA
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+# Pour le cas-test
+test = CA.TestCase()
+
+# Execution interactive : 1=OUI, 0=NON
+interactif = 0
+
+# Si la variable d'environnement DISPLAY n'est pas definie on desactive l'interactif
+if "DISPLAY" not in os.environ:
+    interactif = 0
+
+# Definition des parametres
+# - Geometriques
+
+EPTUB = 0.02
+REXT = 0.2
+RMOY = REXT - (EPTUB / 2)
+
+# - Chargement
+FYTOT = 500000.0
+FYREP = FYTOT / 2.0 / pi / RMOY
+
+# Definition du materiau
+
+ACIER = DEFI_MATERIAU(ELAS=_F(E=1.8e11, NU=0.3))
+
+import os
+
+fres = open("fort.44", "w")
+
+# Le rayon de courbure initial
+
+RC = 0.3
+
+#    Boucle sur k : a chaque itération, geometrie,maillage, calcul mecanique
+#                   et verification de la contrainte VMIS max.
+#    ATTENTION :    en python, il faut indenter les commandes sous la
+#                   structure de contrôle
+#                   (voir for statement dans PYTHON REF MANUAL)
+#    ATTENTION :    range(1,10) signifie que k varie de 1 a 9
+#                   (voir for statement dans PYTHON REF MANUAL)
+
+for k in range(1, 10):
+    if not os.path.exists(f"fort.{50 + k}"):
+        k = -1
+        break
+
+    os.system("cp coque.med fort.19")
+
+    # Calcul Aster avec ce maillage
+    MAIL = LIRE_MAILLAGE(FORMAT="ASTER", UNITE=50 + k)
+
+    MAIL = DEFI_GROUP(
+        reuse=MAIL, MAILLAGE=MAIL, CREA_GROUP_NO=(_F(GROUP_MA="G_2D_30"), _F(GROUP_MA="G_0D_31"))
+    )
+
+    MAIL = MODI_MAILLAGE(
+        reuse=MAIL,
+        MAILLAGE=MAIL,
+        ORIE_NORM_COQUE=_F(GROUP_MA="G_2D_30", VECT_NORM=(1.0, 0.0, 0.0), GROUP_NO="G_0D_31"),
+    )
+
+    MODE = AFFE_MODELE(
+        MAILLAGE=MAIL,
+        AFFE=_F(GROUP_MA=("G_2D_30", "G_1D_28"), PHENOMENE="MECANIQUE", MODELISATION="DKT"),
+    )
+
+    MATE = AFFE_MATERIAU(MAILLAGE=MAIL, AFFE=_F(TOUT="OUI", MATER=ACIER))
+
+    CARA = AFFE_CARA_ELEM(MODELE=MODE, COQUE=_F(GROUP_MA=("G_2D_30", "G_1D_28"), EPAIS=0.02))
+
+    CHAR = AFFE_CHAR_MECA(
+        MODELE=MODE,
+        DDL_IMPO=(
+            _F(GROUP_MA="G_1D_27", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+            _F(GROUP_MA="G_1D_29", DZ=0.0, DRX=0.0, DRY=0.0),
+        ),
+        FORCE_ARETE=_F(GROUP_MA="G_1D_28", FY=FYREP),
+    )
+
+    RESU = MECA_STATIQUE(MODELE=MODE, CHAM_MATER=MATE, CARA_ELEM=CARA, EXCIT=_F(CHARGE=CHAR))
+
+    RESU = CALC_CHAMP(reuse=RESU, RESULTAT=RESU, CONTRAINTE=("SIGM_ELNO"))
+
+    RESU2 = POST_CHAMP(
+        RESULTAT=RESU,
+        EXTR_COQUE=_F(NOM_CHAM=("SIEF_ELGA", "SIGM_ELNO"), NUME_COUCHE=1, NIVE_COUCHE="SUP"),
+    )
+
+    RESU2 = CALC_CHAMP(reuse=RESU2, RESULTAT=RESU2, CRITERES=("SIEQ_ELNO"))
+
+    RESU2 = CALC_CHAMP(reuse=RESU2, RESULTAT=RESU2, CONTRAINTE="SIGM_NOEU", CRITERES="SIEQ_NOEU")
+
+    # Impression des resultats au format GMSH
+    unit = 50 + k
+    IMPR_RESU(
+        MODELE=MODE,
+        UNITE=unit,
+        FORMAT="GMSH",
+        RESU=(
+            _F(MAILLAGE=MAIL, RESULTAT=RESU2, NOM_CHAM="SIEQ_NOEU", NOM_CMP="VMIS"),
+            _F(MAILLAGE=MAIL, RESULTAT=RESU, NOM_CHAM="DEPL"),
+        ),
+    )
+
+    RELV = POST_RELEVE_T(
+        ACTION=_F(
+            RESULTAT=RESU2,
+            INTITULE="CONTRAINTES",
+            NOM_CHAM="SIEQ_NOEU",
+            NUME_ORDRE=1,
+            OPERATION="MOYENNE",
+            GROUP_NO="G_2D_30",
+            NOM_CMP="VMIS",
+        )
+    )
+
+    IMPR_TABLE(TABLE=RELV)
+
+    RELV = CALC_TABLE(
+        reuse=RELV, TABLE=RELV, ACTION=_F(OPERATION="FILTRE", NOM_PARA="QUANTITE", VALE_K="MAXIMUM")
+    )
+
+    # Récupération de VMIS max
+    #   Affectation du réel contenu dans la table RELV
+    #   (colonne 'VMIS', ligne 4) dans la variable python SYY
+
+    print(RELV.EXTR_TABLE())
+    SYY = RELV["VMIS", 1]
+
+    print(" Itération numéro ", k, " RC = ", RC)
+    print(" VMIS(", k, ")=", SYY)
+
+    fres.write("RC= %3f " % RC)
+    fres.write("Vmis= %3f \n" % SYY)
+
+    crit = 2000.0e6
+    # Test d'arrêt des itérations :  abs(SIYY) est-il inférieur à crit.
+    # Le critère d'arrêt des itérations porte sur la valeur
+    #      de la contrainte "VMIS" max à l'itération k
+    #      ATTENTION : décalage de l'identation sous la structure de contrôle "if"
+    #      ATTENTION : sortie de la boucle sur k avec "break", on reprend
+    #                  en fres.close)
+
+    if abs(SYY) < crit:
+        print("arrêt des itérations  : itération numero", k)
+        break
+
+    # Le critère n'est pas respecté, on continue les itérations
+    # en augmentant le rayon de courbure de 0.2.
+
+    RC = RC + 0.2
+
+# Fin des itérations (boucle sur k)
+fres.close()
+
+if k < 0:
+    print("le maillage n'est pas disponible !")
+else:
+    # Le critère doit être atteint en 5 itérations
+    test.assertEqual(k, 5, "number of itérations")
+
+    # Vérification de la valeur de VMIS obtenue (test de non-régression)
+    TEST_TABLE(
+        VALE_CALC=1959874357.0,
+        NOM_PARA="VMIS",
+        TABLE=RELV,
+        FILTRE=_F(NOM_PARA="QUANTITE", VALE_K="MAXIMUM"),
+    )
+
+test.printSummary()
+
+FIN()

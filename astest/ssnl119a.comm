@@ -1,0 +1,415 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# tps_job 480 mem_job 32Mo ncpus 1 liste_test S
+
+DEBUT(CODE="OUI")
+
+# lecture maillage lineique
+MAPOU = LIRE_MAILLAGE(UNITE=17, FORMAT="MED")
+# lecture maillage section1
+MASEC = LIRE_MAILLAGE(UNITE=18, FORMAT="MED")
+
+GF = DEFI_GEOM_FIBRE(
+    INFO=2,
+    FIBRE=(
+        _F(
+            GROUP_FIBRE="SACI",
+            CARA="DIAMETRE",
+            COOR_AXE_POUTRE=(0.0, 0.0),
+            VALE=(0.066, -0.218, 32.0e-03, 0.066, 0.218, 8.0e-03),
+        ),
+        _F(
+            GROUP_FIBRE="SACIT",
+            CARA="DIAMETRE",
+            COOR_AXE_POUTRE=(0.0, 0.0),
+            VALE=(-0.066, -0.218, 32.0e-03, -0.066, 0.218, 8.0e-03),
+        ),
+    ),
+    SECTION=_F(
+        GROUP_FIBRE="SBET", COOR_AXE_POUTRE=(0.0, 0.0), MAILLAGE_SECT=MASEC, TOUT_SECT="OUI"
+    ),
+)
+
+
+MOPOU = AFFE_MODELE(
+    MAILLAGE=MAPOU, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="POU_D_EM")
+)
+
+# Beton
+EB = 37272.0e06
+BETON = DEFI_MATER_GC(
+    MAZARS=_F(
+        CODIFICATION="ESSAI",
+        FCJ=40.963e06,
+        EIJ=EB,
+        EPSI_C=1.75754e-03,
+        FTJ=3.05778e06,
+        AT=1.0,
+        NU=0.2,
+    ),
+    RHO=2400.0,
+    INFO=2,
+)
+
+
+# Acier
+Young = 2.0e11
+Sy = 400.0e06
+DSiEps = 3.28e9
+
+EpsiElas = Sy / Young
+Epsi1 = EpsiElas * 5
+Sigm1 = Sy + (Epsi1 - EpsiElas) * DSiEps
+
+
+FctSigm = DEFI_FONCTION(
+    NOM_PARA="EPSI",
+    VALE=(EpsiElas, Sy, Epsi1, Sigm1),
+    PROL_GAUCHE="CONSTANT",
+    PROL_DROITE="LINEAIRE",
+)
+
+ACIER = DEFI_MATER_GC(ACIER=_F(E=Young, D_SIGM_EPSI=DSiEps, SY=Sy), RHO=7800.0)
+
+ACIERT = DEFI_MATERIAU(ELAS=_F(E=Young, NU=0.3), TRACTION=_F(SIGM=FctSigm))
+
+MATOR = DEFI_MATERIAU(ELAS=_F(E=2.0e11, NU=0.0, RHO=7800.0))
+
+PMFMAZAR = DEFI_COMPOR(
+    GEOM_FIBRE=GF,
+    MATER_SECT=MATOR,
+    MULTIFIBRE=(
+        _F(GROUP_FIBRE="SACI", MATER=ACIER, RELATION="VMIS_CINE_GC"),
+        _F(GROUP_FIBRE="SACIT", MATER=ACIERT, RELATION="VMIS_ISOT_TRAC"),
+        _F(GROUP_FIBRE="SBET", MATER=BETON, RELATION="MAZARS_UNIL"),
+    ),
+)
+
+MATMAZAR = AFFE_MATERIAU(
+    MAILLAGE=MAPOU,
+    AFFE=_F(GROUP_MA="POUTRE", MATER=(ACIER, BETON, MATOR, ACIERT)),
+    AFFE_COMPOR=_F(GROUP_MA="POUTRE", COMPOR=PMFMAZAR),
+)
+
+POUCA = AFFE_CARA_ELEM(
+    MODELE=MOPOU,
+    INFO=1,
+    POUTRE=_F(GROUP_MA=("POUTRE"), SECTION="RECTANGLE", CARA=("HY", "HZ"), VALE=(0.2, 0.5)),
+    ORIENTATION=_F(GROUP_MA=("POUTRE"), CARA="ANGL_VRIL", VALE=-90.0),
+    GEOM_FIBRE=GF,
+    MULTIFIBRE=_F(
+        GROUP_MA=("POUTRE"),
+        GROUP_FIBRE=("SBET", "SACI", "SACIT"),
+        PREC_AIRE=2.0e-02,
+        PREC_INERTIE=2.5e-01,
+    ),
+)
+
+BLOCAGE = AFFE_CHAR_MECA(
+    MODELE=MOPOU,
+    DDL_IMPO=(_F(GROUP_NO="A", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0), _F(GROUP_NO="B", DY=0.0)),
+)
+
+DEPIMP = AFFE_CHAR_MECA(MODELE=MOPOU, DDL_IMPO=_F(GROUP_NO="C", DY=-1.0e-2))
+
+
+FOFO = DEFI_FONCTION(
+    NOM_PARA="INST", VALE=(0.0, 0.0, 3.5, 3.5), PROL_DROITE="EXCLU", PROL_GAUCHE="EXCLU"
+)
+
+
+LINSTD = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=0.10, NOMBRE=2),
+        _F(JUSQU_A=1.40, NOMBRE=10),
+        _F(JUSQU_A=3.00, NOMBRE=10),
+    ),
+)
+
+LINST = DEFI_LIST_INST(
+    METHODE="MANUEL",
+    DEFI_LIST=_F(LIST_INST=LINSTD),
+    ECHEC=_F(
+        EVENEMENT="ERREUR",
+        ACTION="DECOUPE",
+        SUBD_METHODE="MANUEL",
+        SUBD_PAS=4,
+        SUBD_PAS_MINI=1.0e-10,
+        SUBD_NIVEAU=5,
+    ),
+)
+
+U1MAZAR = STAT_NON_LINE(
+    MODELE=MOPOU,
+    CHAM_MATER=MATMAZAR,
+    CARA_ELEM=POUCA,
+    EXCIT=(_F(CHARGE=BLOCAGE), _F(CHARGE=DEPIMP, FONC_MULT=FOFO)),
+    COMPORTEMENT=_F(RELATION="MULTIFIBRE"),
+    INCREMENT=_F(LIST_INST=LINST),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    CONVERGENCE=_F(RESI_GLOB_RELA=1.0e-5, ITER_GLOB_MAXI=10),
+)
+
+U1MAZAR = CALC_CHAMP(FORCE="REAC_NODA", reuse=U1MAZAR, RESULTAT=U1MAZAR)
+
+# Instants
+instant = [0.100, 1.400, 2.680]
+# reactions
+React = [1.75623383345e04, 1.10527e05, 1.212170321e05]
+# contraintes acier tendu
+Sp_At = 41
+Aciet = [1.99326e07, 4.00499e08, 4.35209528e08]
+# contraintes acier comprime
+Sp_Ac = 44
+Aciec = [-2.2139439e07, -1.773006175e08, -4.018150947e08]
+# Deformations acier tendu
+Eacit = [9.9663063e-05, 2.15218631e-03, 0.012734612316189125]
+# contraintes beton comprime
+Sp_Bc = 1
+Betoc = [-4.47657e06, -3.53105e07, -3.09230564e07]
+# contraintes beton tendu
+Sp_Bt = 40
+Betot = [2.92412e06, 8.52817e02, 5.001293e03]
+
+U1MAZAR = CALC_CHAMP(reuse=U1MAZAR, RESULTAT=U1MAZAR, DEFORMATION=("EPSI_ELGA", "EPSP_ELGA"))
+
+TEST_RESU(
+    RESU=(
+        # Réaction d'appui
+        _F(
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DY",
+            GROUP_NO="A",
+            RESULTAT=U1MAZAR,
+            INST=instant[0],
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=React[0],
+        ),
+        _F(
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DY",
+            GROUP_NO="A",
+            RESULTAT=U1MAZAR,
+            INST=instant[1],
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=React[1],
+        ),
+        _F(
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DY",
+            GROUP_NO="A",
+            RESULTAT=U1MAZAR,
+            INST=instant[2],
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=React[2],
+        ),
+        # Contraintes Acier tendu
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[0],
+            POINT=2,
+            SOUS_POINT=Sp_At,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Aciet[0],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[1],
+            POINT=2,
+            SOUS_POINT=Sp_At,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Aciet[1],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[2],
+            POINT=2,
+            SOUS_POINT=Sp_At,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Aciet[2],
+        ),
+        # Contraintes Acier comprimé
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[0],
+            POINT=2,
+            SOUS_POINT=Sp_Ac,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Aciec[0],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[1],
+            POINT=2,
+            SOUS_POINT=Sp_Ac,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Aciec[1],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[2],
+            POINT=2,
+            SOUS_POINT=Sp_Ac,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Aciec[2],
+        ),
+        # Contraintes Béton comprimé
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[0],
+            POINT=2,
+            SOUS_POINT=Sp_Bc,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Betoc[0],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[1],
+            POINT=2,
+            SOUS_POINT=Sp_Bc,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Betoc[1],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[2],
+            POINT=2,
+            SOUS_POINT=Sp_Bc,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Betoc[2],
+        ),
+        # Contraintes Béton tendu
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[0],
+            POINT=2,
+            SOUS_POINT=Sp_Bt,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Betot[0],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[1],
+            POINT=2,
+            SOUS_POINT=Sp_Bt,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Betot[1],
+        ),
+        _F(
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[2],
+            POINT=2,
+            SOUS_POINT=Sp_Bt,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Betot[2],
+        ),
+        # Déformations Acier tendu
+        _F(
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[0],
+            POINT=2,
+            SOUS_POINT=Sp_At,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Eacit[0],
+        ),
+        _F(
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[1],
+            POINT=2,
+            SOUS_POINT=Sp_At,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Eacit[1],
+        ),
+        _F(
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            GROUP_MA="M9",
+            RESULTAT=U1MAZAR,
+            INST=instant[2],
+            POINT=2,
+            SOUS_POINT=Sp_At,
+            CRITERE=("RELATIF", "ABSOLU"),
+            VALE_ABS="NON",
+            VALE_CALC=Eacit[2],
+        ),
+    )
+)
+
+FIN()

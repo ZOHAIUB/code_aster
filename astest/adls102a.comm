@@ -1,0 +1,437 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#               OSCILLATEUR FLUIDE-ELASTIQUE MERIDIEN
+# ----------------------------------------------------------------------
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+mesh = LIRE_MAILLAGE(FORMAT="MED")
+
+mesh = MODI_MAILLAGE(
+    reuse=mesh,
+    MAILLAGE=mesh,
+    ORIE_PEAU=_F(
+        GROUP_MA_PEAU=("FSI_Wall_In", "FSI_Wall_Out", "FSI_Piston"), GROUP_MA_INTERNE="Fluid"
+    ),
+)
+
+model = AFFE_MODELE(
+    MAILLAGE=mesh,
+    AFFE=(
+        _F(GROUP_MA=("Fluid",), PHENOMENE="MECANIQUE", MODELISATION="2D_FLUIDE"),
+        _F(
+            GROUP_MA=("FSI_Wall_In", "FSI_Wall_Out", "FSI_Piston"),
+            PHENOMENE="MECANIQUE",
+            MODELISATION="2D_FLUI_STRU",
+        ),
+        _F(
+            GROUP_MA=("Piston", "Channel_In", "Channel_Out"),
+            PHENOMENE="MECANIQUE",
+            MODELISATION="D_PLAN",
+        ),
+        _F(GROUP_MA=("0D_Walls"), PHENOMENE="MECANIQUE", MODELISATION="2D_DIS_T"),
+        _F(GROUP_MA=("0D_Piston",), PHENOMENE="MECANIQUE", MODELISATION="2D_DIS_T"),
+    ),
+)
+
+# Material properties
+water = DEFI_MATERIAU(FLUIDE=_F(RHO=0.750e03, CELE_R=1.0e03))
+
+steel = DEFI_MATERIAU(
+    ELAS=_F(E=2.000000000e12, NU=0.3e00, RHO=0.000000000e03, ALPHA=0.000000000e00)
+)
+
+FICTIF = DEFI_MATERIAU(
+    ELAS=_F(E=2.000000000e12, NU=0.3e00, RHO=0.000000000e03, ALPHA=0.000000000e00)
+)
+
+# Field of material properties
+materField = AFFE_MATERIAU(
+    MAILLAGE=mesh,
+    AFFE=(
+        _F(GROUP_MA=("Fluid", "FSI_Wall_In", "FSI_Wall_Out", "FSI_Piston"), MATER=water),
+        _F(GROUP_MA=("Channel_In", "Channel_Out"), MATER=FICTIF),
+        _F(GROUP_MA="Piston", MATER=steel),
+    ),
+)
+
+# Field of material properties to check matrix combination
+materFieldComb = AFFE_MATERIAU(
+    MAILLAGE=mesh,
+    AFFE=(
+        _F(GROUP_MA=("Fluid", "FSI_Wall_In", "FSI_Wall_Out", "FSI_Piston"), MATER=water),
+        _F(GROUP_MA=("Channel_In", "Channel_Out"), MATER=FICTIF),
+        _F(GROUP_MA="Piston", MATER=steel),
+    ),
+)
+
+# Elementary properties of ponctual elements (spring, dashpot and mass) with DIAGONAL dashpots
+elemPropDiag = AFFE_CARA_ELEM(
+    MODELE=model,
+    DISCRET_2D=(
+        _F(GROUP_MA="0D_Piston", CARA="K_T_D_N", REPERE="GLOBAL", VALE=(0.0, 50.0e09)),
+        _F(GROUP_MA="0D_Piston", CARA="M_T_D_N", VALE=200.0e03),
+        _F(GROUP_MA="0D_Piston", CARA="A_T_D_N", VALE=(0.0, 0.0)),
+        _F(GROUP_MA="0D_Walls", CARA="A_T_D_N", REPERE="GLOBAL", VALE=(37.5e04, 0.0)),
+    ),
+)
+
+# Boundary conditions
+BC = AFFE_CHAR_MECA(
+    MODELE=model,
+    DDL_IMPO=(
+        _F(GROUP_NO="Node_Piston", DX=0.0),
+        _F(GROUP_NO="Node_Wall_In", DY=0.0),
+        _F(GROUP_NO="Node_Wall_Out", DY=0.0),
+    ),
+    LIAISON_SOLIDE=(
+        _F(GROUP_MA=("Piston",)),
+        _F(GROUP_MA=("Channel_In",)),
+        _F(GROUP_MA=("Channel_Out",)),
+    ),
+)
+
+# Load: pressure
+waveDepres = 17.0e06
+pressure = AFFE_CHAR_MECA(MODELE=model, PRES_REP=_F(GROUP_MA="FSI_Wall_In", PRES=waveDepres))
+
+# Load: speed
+funcViteFace = DEFI_FONCTION(NOM_PARA="INST", VALE=(0.0, 0.0, 0.1, 0.0, 0.2, 0.0))
+viteFace = AFFE_CHAR_MECA_F(MODELE=model, VITE_FACE=_F(GROUP_MA="FSI_Wall_In", VNOR=funcViteFace))
+
+# Compute elementary matrixes end vectors
+rigiElem = CALC_MATR_ELEM(
+    MODELE=model, OPTION="RIGI_MECA", CHARGE=BC, CHAM_MATER=materField, CARA_ELEM=elemPropDiag
+)
+rigiElemComb = CALC_MATR_ELEM(
+    MODELE=model, OPTION="RIGI_MECA", CHARGE=BC, CHAM_MATER=materFieldComb, CARA_ELEM=elemPropDiag
+)
+
+massElem = CALC_MATR_ELEM(
+    MODELE=model, OPTION="MASS_MECA", CHARGE=BC, CHAM_MATER=materField, CARA_ELEM=elemPropDiag
+)
+
+dampElem = CALC_MATR_ELEM(
+    MODELE=model,
+    OPTION="AMOR_MECA",
+    RIGI_MECA=rigiElem,
+    MASS_MECA=massElem,
+    CHAM_MATER=materField,
+    CARA_ELEM=elemPropDiag,
+    CHARGE=BC,
+)
+
+loadElem = CALC_VECT_ELEM(
+    OPTION="CHAR_MECA", CHARGE=(pressure, viteFace), CHAM_MATER=materField, CARA_ELEM=elemPropDiag
+)
+
+# Assembly elementary matrixes end vectors
+numeDof = NUME_DDL(MATR_RIGI=rigiElem)
+
+rigiAsseComb1 = ASSE_MATRICE(MATR_ELEM=rigiElem, NUME_DDL=numeDof)
+rigiAsseComb2 = ASSE_MATRICE(MATR_ELEM=rigiElemComb, NUME_DDL=numeDof)
+
+rigiAsse = COMB_MATR_ASSE(
+    COMB_R=(_F(MATR_ASSE=rigiAsseComb1, COEF_R=1.0), _F(MATR_ASSE=rigiAsseComb2, COEF_R=0.0))
+)
+
+massAsse = ASSE_MATRICE(MATR_ELEM=massElem, NUME_DDL=numeDof)
+
+dampAsse = ASSE_MATRICE(MATR_ELEM=dampElem, NUME_DDL=numeDof)
+
+loadAsse = ASSE_VECTEUR(VECT_ELEM=loadElem, NUME_DDL=numeDof)
+
+#
+# ----------------------------------------------------------------------
+# DEFINITION DU TEMPS DE CALCUL ET DU PAS DE TEMPS
+
+TEMPCAL = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=0.100, NOMBRE=2000))
+
+# LISTE DES INSTANTS POUR LESQUELS ON VEUT  SAUVEGARDER LES RESULTATS
+
+TEMPARCH = DEFI_LIST_ENTI(DEBUT=1, INTERVALLE=_F(JUSQU_A=2000, PAS=1))
+
+# CALCUL DE LA REPONSE TRANSITOIRE
+DYNA = DYNA_VIBRA(
+    TYPE_CALCUL="TRAN",
+    BASE_CALCUL="PHYS",
+    EXCIT=_F(VECT_ASSE=loadAsse, COEF_MULT=1.0),
+    MATR_MASS=massAsse,
+    MATR_RIGI=rigiAsse,
+    MATR_AMOR=dampAsse,
+    SCHEMA_TEMPS=_F(SCHEMA="NEWMARK"),
+    INCREMENT=_F(LIST_INST=TEMPCAL),
+    ARCHIVAGE=_F(CHAM_EXCLU=("ACCE",)),
+)
+
+TAB = CREA_TABLE(RESU=(_F(RESULTAT=DYNA, NOM_CHAM="DEPL", NOM_CMP=("PRES"), GROUP_MA="FSI_Piston")))
+
+TEST_TABLE(
+    TABLE=TAB,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=0.02015),
+        _F(NOM_PARA="NOEUD", CRIT_COMP="EQ", VALE_K="2826"),  # node at the middle
+    ),
+    NOM_PARA="PRES",
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-7760713.173947111,
+    VALE_REFE=-7.9073e06,
+    PRECISION=0.05,
+)
+
+TEST_TABLE(
+    TABLE=TAB,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=0.02605),
+        _F(NOM_PARA="NOEUD", CRIT_COMP="EQ", VALE_K="2826"),
+    ),
+    NOM_PARA="PRES",
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-9123879.376106396,
+    VALE_REFE=-9.0154e06,
+    PRECISION=0.05,
+)
+
+#
+# EXTRACTIONS ET TESTS:
+# ----------------------
+#
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="Node_Piston",
+            INST=0.02015,
+            RESULTAT=DYNA,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            REFERENCE="ANALYTIQUE",
+            VALE_REFE=-1.3530e-3,
+            VALE_CALC=-0.00135361195721,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="Node_Piston",
+            INST=0.02605,
+            RESULTAT=DYNA,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            REFERENCE="ANALYTIQUE",
+            VALE_REFE=-4.210e-4,
+            VALE_CALC=-0.000420710523995,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+
+# Elementary properties of ponctual elements (spring, dashpot and mass) without DIAGONAL dashpots
+elemPropNotDiag = AFFE_CARA_ELEM(
+    MODELE=model,
+    DISCRET_2D=(
+        _F(GROUP_MA="0D_Piston", CARA="K_T_D_N", REPERE="GLOBAL", VALE=(0.0, 50.0e09)),
+        _F(GROUP_MA="0D_Piston", CARA="M_T_D_N", VALE=200.0e03),
+        _F(GROUP_MA="0D_Piston", CARA="A_T_N", VALE=(0.0, 0.0, 0.0)),
+        _F(GROUP_MA="0D_Walls", CARA="A_T_N", REPERE="GLOBAL", VALE=(37.5e04, 0.0, 0.0)),
+    ),
+)
+
+# Load: function pressure
+pres = DEFI_CONSTANTE(VALE=waveDepres)
+presfunc = AFFE_CHAR_MECA_F(MODELE=model, PRES_REP=_F(GROUP_MA="FSI_Wall_In", PRES=pres))
+
+# Compute elementary matrixes end vectors
+rigiElem = CALC_MATR_ELEM(
+    MODELE=model, OPTION="RIGI_MECA", CHARGE=BC, CHAM_MATER=materField, CARA_ELEM=elemPropNotDiag
+)
+rigiElemComb = CALC_MATR_ELEM(
+    MODELE=model,
+    OPTION="RIGI_MECA",
+    CHARGE=BC,
+    CHAM_MATER=materFieldComb,
+    CARA_ELEM=elemPropNotDiag,
+)
+
+massElem = CALC_MATR_ELEM(
+    MODELE=model, OPTION="MASS_MECA", CHARGE=BC, CHAM_MATER=materField, CARA_ELEM=elemPropNotDiag
+)
+
+dampElem = CALC_MATR_ELEM(
+    MODELE=model,
+    OPTION="AMOR_MECA",
+    RIGI_MECA=rigiElem,
+    MASS_MECA=massElem,
+    CHAM_MATER=materField,
+    CARA_ELEM=elemPropNotDiag,
+    CHARGE=BC,
+)
+
+# For function in pressure
+loadFuncElem = CALC_VECT_ELEM(
+    OPTION="CHAR_MECA", CHARGE=presfunc, CHAM_MATER=materField, CARA_ELEM=elemPropNotDiag
+)
+
+# Assembly elementary matrixes end vectors
+numeDof = NUME_DDL(MATR_RIGI=rigiElem)
+
+rigiAsseComb1 = ASSE_MATRICE(MATR_ELEM=rigiElem, NUME_DDL=numeDof)
+rigiAsseComb2 = ASSE_MATRICE(MATR_ELEM=rigiElemComb, NUME_DDL=numeDof)
+
+rigiAsse = COMB_MATR_ASSE(
+    COMB_R=(_F(MATR_ASSE=rigiAsseComb1, COEF_R=1.0), _F(MATR_ASSE=rigiAsseComb2, COEF_R=0.0))
+)
+
+massAsse = ASSE_MATRICE(MATR_ELEM=massElem, NUME_DDL=numeDof)
+
+dampAsse = ASSE_MATRICE(MATR_ELEM=dampElem, NUME_DDL=numeDof)
+
+loadFuncAsse = ASSE_VECTEUR(VECT_ELEM=loadFuncElem, NUME_DDL=numeDof)
+
+# CALCUL DE LA REPONSE TRANSITOIRE
+DYNAfunc = DYNA_VIBRA(
+    TYPE_CALCUL="TRAN",
+    BASE_CALCUL="PHYS",
+    EXCIT=_F(VECT_ASSE=loadFuncAsse, COEF_MULT=1.0),
+    MATR_MASS=massAsse,
+    MATR_RIGI=rigiAsse,
+    MATR_AMOR=dampAsse,
+    SCHEMA_TEMPS=_F(SCHEMA="NEWMARK"),
+    INCREMENT=_F(LIST_INST=TEMPCAL),
+    ARCHIVAGE=_F(CHAM_EXCLU=("ACCE",)),
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="Node_Piston",
+            INST=0.02015,
+            RESULTAT=DYNAfunc,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            REFERENCE="ANALYTIQUE",
+            VALE_REFE=-1.3530e-3,
+            VALE_CALC=-0.00135361195721,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="Node_Piston",
+            INST=0.02605,
+            RESULTAT=DYNAfunc,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            REFERENCE="ANALYTIQUE",
+            VALE_REFE=-4.210e-4,
+            VALE_CALC=-0.000420710523995,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+
+# -----------------------------------------------------------
+# Load on solid and BC on fluid
+wallin_height = 0.5
+wallin_force = AFFE_CHAR_MECA(
+    MODELE=model, FORCE_NODALE=_F(GROUP_NO="Node_Wall_In", FX=-waveDepres * wallin_height)
+)
+
+wallin_loadElem = CALC_VECT_ELEM(
+    OPTION="CHAR_MECA",
+    CHARGE=(wallin_force, viteFace),
+    CHAM_MATER=materField,
+    CARA_ELEM=elemPropDiag,
+)
+
+wallin_loadAsse = ASSE_VECTEUR(VECT_ELEM=wallin_loadElem, NUME_DDL=numeDof)
+
+# CALCULATION OF THE TRANSIENT RESPONSE
+DYNA2 = DYNA_VIBRA(
+    TYPE_CALCUL="TRAN",
+    BASE_CALCUL="PHYS",
+    CHAM_MATER=materField,
+    EXCIT=_F(VECT_ASSE=wallin_loadAsse, COEF_MULT=1.0),
+    MATR_MASS=massAsse,
+    MATR_RIGI=rigiAsse,
+    MATR_AMOR=dampAsse,
+    SCHEMA_TEMPS=_F(SCHEMA="NEWMARK"),
+    INCREMENT=_F(LIST_INST=TEMPCAL),
+    ARCHIVAGE=_F(CHAM_EXCLU=("ACCE",)),
+)
+
+TAB2 = CREA_TABLE(
+    RESU=(_F(RESULTAT=DYNA2, NOM_CHAM="DEPL", NOM_CMP=("PRES"), GROUP_MA="FSI_Piston"))
+)
+
+#
+# EXTRACTIONS AND TESTS
+#
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="Node_Piston",
+            INST=0.02015,
+            RESULTAT=DYNA2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            REFERENCE="ANALYTIQUE",
+            VALE_REFE=-1.3530e-3,
+            VALE_CALC=-0.0013536119562145713,
+            PRECISION=5.0e-2,
+        ),
+        _F(
+            GROUP_NO="Node_Piston",
+            INST=0.02605,
+            RESULTAT=DYNA2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            REFERENCE="ANALYTIQUE",
+            VALE_REFE=-4.210e-4,
+            VALE_CALC=-0.0004207105143995735,
+            PRECISION=5.0e-2,
+        ),
+    )
+)
+
+TEST_TABLE(
+    TABLE=TAB2,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=0.02015),
+        _F(NOM_PARA="NOEUD", CRIT_COMP="EQ", VALE_K="2826"),  # node at the middle
+    ),
+    NOM_PARA="PRES",
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-7760713.175804421,
+    VALE_REFE=-7.9073e06,
+    PRECISION=0.05,
+)
+
+TEST_TABLE(
+    TABLE=TAB2,
+    FILTRE=(
+        _F(NOM_PARA="INST", CRIT_COMP="EQ", VALE=0.02605),
+        _F(NOM_PARA="NOEUD", CRIT_COMP="EQ", VALE_K="2826"),
+    ),
+    NOM_PARA="PRES",
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-9123879.376292128,
+    VALE_REFE=-9.0154e06,
+    PRECISION=0.05,
+)
+
+#
+FIN()
+#

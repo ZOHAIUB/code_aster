@@ -1,0 +1,12 @@
+P time_limit 160
+P memory_limit 1024
+P ncpus 1
+P mpi_nbcpu 2
+P mpi_nbnoeud 1
+P testlist verification parallel
+
+F comm zzzz395l.comm D 1
+F mmed zzzz395a.mmed D 20
+F mmed zzzz395l.80 D 80
+F libr zzzz395l.54 D 54
+

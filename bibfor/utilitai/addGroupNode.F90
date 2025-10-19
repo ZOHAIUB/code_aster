@@ -1,0 +1,97 @@
+! --------------------------------------------------------------------
+! Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+! This file is part of code_aster.
+!
+! code_aster is free software: you can redistribute it and/or modify
+! it under the terms of the GNU General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version.
+!
+! code_aster is distributed in the hope that it will be useful,
+! but WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! GNU General Public License for more details.
+!
+! You should have received a copy of the GNU General Public License
+! along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+! --------------------------------------------------------------------
+
+subroutine addGroupNode(mesh, nb_add)
+!
+    implicit none
+!
+#include "jeveux.h"
+#include "asterfort/cpclma.h"
+#include "asterfort/jeexin.h"
+#include "asterfort/jedetr.h"
+#include "asterfort/jecreo.h"
+#include "asterfort/jecroc.h"
+#include "asterfort/jeecra.h"
+#include "asterfort/jecrec.h"
+#include "asterfort/jelira.h"
+#include "asterfort/jenuno.h"
+#include "asterfort/jeveuo.h"
+#include "asterfort/jexnom.h"
+#include "asterfort/jexnum.h"
+!
+!
+    character(len=8), intent(in) :: mesh
+    integer(kind=8), intent(in) :: nb_add
+!
+! --------------------------------------------------------------------------------------------------
+!
+! Mesh management
+!
+! Add group in list of GROUP_NO
+!
+! --------------------------------------------------------------------------------------------------
+!
+! In  mesh         : name of mesh
+! In  nb_add       : number of groups to add
+!
+! --------------------------------------------------------------------------------------------------
+!
+    character(len=24) :: grpnoe, gpptnn, grpnov
+    character(len=24) :: group_name
+    integer(kind=8) :: iret, nb_group, nb_group_new, nb_enti, i_enti, i_group, jvg, jgg
+!
+! --------------------------------------------------------------------------------------------------
+!
+    grpnoe = mesh//'.GROUPENO'
+    gpptnn = mesh//'.PTRNOMNOE'
+    grpnov = '&&ADDGRE.GROUPENO'
+!
+    if (nb_add > 0) then
+        call jeexin(grpnoe, iret)
+        if (iret .eq. 0) then
+            call jedetr(gpptnn)
+            call jecreo(gpptnn, 'G N K24')
+            call jeecra(gpptnn, 'NOMMAX', nb_add, ' ')
+            call jecrec(grpnoe, 'G V I', 'NO '//gpptnn, 'DISPERSE', 'VARIABLE', nb_add)
+        else
+            call jelira(grpnoe, 'NOMUTI', nb_group)
+            nb_group_new = nb_group+nb_add
+            call cpclma(mesh, '&&ADDGRE', 'GROUPENO', 'V')
+            call jedetr(grpnoe)
+            call jedetr(gpptnn)
+            call jecreo(gpptnn, 'G N K24')
+            call jeecra(gpptnn, 'NOMMAX', nb_group_new, ' ')
+            call jecrec(grpnoe, 'G V I', 'NO '//gpptnn, 'DISPERSE', 'VARIABLE', nb_group_new)
+            do i_group = 1, nb_group
+                call jenuno(jexnum(grpnov, i_group), group_name)
+                call jecroc(jexnom(grpnoe, group_name))
+                call jeveuo(jexnum(grpnov, i_group), 'L', jvg)
+                call jelira(jexnum(grpnov, i_group), 'LONUTI', nb_enti)
+                call jeecra(jexnom(grpnoe, group_name), 'LONMAX', max(nb_enti, 1))
+                call jeecra(jexnom(grpnoe, group_name), 'LONUTI', nb_enti)
+                call jeveuo(jexnom(grpnoe, group_name), 'E', jgg)
+                do i_enti = 1, nb_enti
+                    zi(jgg+i_enti-1) = zi(jvg+i_enti-1)
+                end do
+            end do
+        end if
+    end if
+!
+    call jedetr(grpnov)
+!
+end subroutine

@@ -1,0 +1,2040 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#              DE SECTION RECTANGULAIRE VARIABLE,
+#              DE SECTION GENERALE  VARIABLE,
+# person_in_charge: jean-luc.flejou at edf.fr
+#
+# ENCASTREE-LIBRE SOUMISE A UN EFFORT FX
+#                         A UN EFFORT FY,
+#                         A UN MOMENT MX,
+#                         A UN MOMENT MY,
+#                         A UNE CHARGE REPARTIE FX,
+#                         A UNE CHARGE REPARTIE FY,
+#                         A EFFORT DE PESANTEUR SUIVANT X
+# ======================================================================
+#
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+
+#
+MA = LIRE_MAILLAGE(FORMAT="ASTER")
+
+#
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="POU_D_E"))
+
+#
+MATR = DEFI_MATERIAU(ELAS=_F(E=2.0e11, NU=0.3, RHO=7800.0))
+
+#
+CHMA = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MATR))
+
+#
+# ------ FORC100X - FORCE PONCTUELLE FX = 100 N AU NOEUD N2 :
+#
+FORC100X = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    FORCE_NODALE=_F(NOEUD="N11", FX=100.0e0),
+)
+
+#
+# ------ FOR100Y - FORCE PONCTUELLE FY = 100 N AU NOEUD N2 :
+#
+FOR100Y = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    FORCE_NODALE=_F(NOEUD="N11", FY=100.0e0),
+)
+
+#
+# ------ MOM100X - MOMENT DE TORSION  MX = 100 N.M AU NOEUD N2 :
+#
+MOM100X = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    FORCE_NODALE=_F(NOEUD="N11", MX=100.0e0),
+)
+
+#
+# ------ MOM100Y - MOMENT DE FLEXION  MY = 100 N.M AU NOEUD N2 :
+#
+MOM100Y = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    FORCE_NODALE=_F(NOEUD="N11", MY=100.0e0, FX=0.0e0),
+)
+
+#
+# ------ DENS100X - FORCE REPARTIE FX = 100 N
+#
+DENS100X = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    FORCE_POUTRE=_F(TOUT="OUI", FX=100.0e0),
+)
+
+#
+# ------ DENS100Y - FORCE REPARTIE FY = 100 N
+#
+DENS100Y = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    FORCE_POUTRE=_F(TOUT="OUI", FY=100.0e0),
+)
+
+#
+# ------ PENSENGX - FORCE DE PESANTEUR
+#
+PENSENGX = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=_F(NOEUD="N1", DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+    PESANTEUR=_F(GRAVITE=9.81, DIRECTION=(0.0, 0.0, -1.0)),
+)
+
+#
+# POUTRE DE SECTION CIRCULAIRE VARIABLE
+#
+CARELCV = AFFE_CARA_ELEM(
+    MODELE=MO,
+    POUTRE=(
+        _F(
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            GROUP_MA="S13",
+            VALE=(0.1, 0.095, 0.1, 0.095),
+        ),
+        _F(
+            GROUP_MA="S34",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.095, 0.090, 0.095, 0.090),
+        ),
+        _F(
+            GROUP_MA="S45",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.090, 0.085, 0.090, 0.085),
+        ),
+        _F(
+            GROUP_MA="S56",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.085, 0.080, 0.085, 0.080),
+        ),
+        _F(
+            GROUP_MA="S67",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.080, 0.075, 0.080, 0.075),
+        ),
+        _F(
+            GROUP_MA="S78",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.075, 0.070, 0.075, 0.070),
+        ),
+        _F(
+            GROUP_MA="S89",
+            VALE=(0.070, 0.065, 0.070, 0.065),
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+        ),
+        _F(
+            GROUP_MA="S910",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.065, 0.060, 0.065, 0.060),
+        ),
+        _F(
+            GROUP_MA="S1011",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.060, 0.055, 0.060, 0.055),
+        ),
+        _F(
+            GROUP_MA="S112",
+            SECTION="CERCLE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("R_DEBUT", "R_FIN", "EP_DEBUT", "EP_FIN"),
+            VALE=(0.055, 0.050, 0.055, 0.050),
+        ),
+    ),
+)
+
+#
+# ------ FORC100X - FORCE PONCTUELLE FX = 100 N AU NOEUD N2 :
+#
+#
+
+MCVF100X = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELCV, EXCIT=_F(CHARGE=FORC100X))
+
+CALC_CHAMP(reuse=MCVF100X, RESULTAT=MCVF100X, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100X,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DX",
+        VALE_CALC=3.1830988618379e-08,
+        VALE_REFE=3.1831000000000002e-08,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+# EFFORT NORMAL A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="N",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT NORMAL A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="N",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=3183.0988618379,
+        VALE_REFE=3183.1,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=12732.395447352,
+        VALE_REFE=1.27324e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# ------ FOR100Y - FORCE PONCTUELLE FY = 100 N AU NOEUD N2 :
+#
+
+MCVF100Y = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELCV, EXCIT=_F(CHARGE=FOR100Y))
+
+CALC_CHAMP(reuse=MCVF100Y, RESULTAT=MCVF100Y, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DY",
+        VALE_CALC=4.2441318157984e-06,
+        VALE_REFE=4.2441300000000001e-06,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRZ",
+        VALE_CALC=8.488263631594e-06,
+        VALE_REFE=8.4882600000000003e-06,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VY",
+        VALE_CALC=100.00000000002,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="VY",
+        VALE_CALC=99.999999999996,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFZ",
+        VALE_CALC=100.00000000029,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MFZ",
+        VALE_CALC=5.6843418860808e-14,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.2732395447388e05,
+        VALE_REFE=1.27324e5,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-1.2732395447388e05,
+        VALE_REFE=-1.27324e5,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVF100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=5.790023100122e-10,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+#
+# ------ MOM100X - MOMENT DE TORSION  MX = 100 N.M AU NOEUD N2 :
+#
+
+MCVM100X = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELCV, EXCIT=_F(CHARGE=MOM100X))
+
+CALC_CHAMP(reuse=MCVM100X, RESULTAT=MCVM100X, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100X,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRX",
+        VALE_CALC=3.8621599523633e-05,
+        VALE_REFE=3.8621600000000003e-05,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+# MOMENT DE TORSION A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MT",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE TORSION A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MT",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# ------ MOM100Y - MOMENT DE FLEXION  MY = 100 N.M AU NOEUD N2 :
+#
+#
+
+MCVM100Y = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELCV, EXCIT=_F(CHARGE=MOM100Y))
+
+CALC_CHAMP(reuse=MCVM100Y, RESULTAT=MCVM100Y, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DZ",
+        VALE_CALC=-8.4882636315939e-06,
+        VALE_REFE=-8.4882600000000003e-06,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRY",
+        VALE_CALC=2.9708922710539e-05,
+        VALE_REFE=2.9708899999999999e-05,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+# EFFORT TRANCHANT Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VZ",
+        VALE_CALC=-2.6375346351415e-11,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT TRANCHANT Z A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="VZ",
+        VALE_CALC=-1.0913936421275e-11,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# MOMENT FLECHISSANT Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFY",
+        VALE_CALC=100.00000000049,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT FLECHISSANT Y A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MFY",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.2732395447413e05,
+        VALE_REFE=1.2732395e5,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-1.2732395447413e05,
+        VALE_REFE=-1.2732395e5,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXXY A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.0185916357881e06,
+        VALE_REFE=1.0185916e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-1.0185916357881e06,
+        VALE_REFE=-1.0185916e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+
+#
+# ------ DENS100X - FORCE REPARTIE FX = 100 N
+#
+
+MCVD100X = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELCV, EXCIT=_F(CHARGE=DENS100X))
+
+CALC_CHAMP(reuse=MCVD100X, RESULTAT=MCVD100X, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVD100X,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DX",
+        VALE_CALC=1.2335870658089e-08,
+        VALE_REFE=1.22961e-08,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+    )
+)
+
+#
+# EFFORT NORMAL A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVD100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="N",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT NORMAL A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVD100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="N",
+        VALE_CALC=8.8817841970013e-16,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVD100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=3183.0988618379,
+        VALE_REFE=3183.0900000000001,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVD100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.1308638867426e-13,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# ------ DENS100Y - FORCE REPARTIE FY = 100 N
+#
+
+MCVDENY = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELCV, EXCIT=_F(CHARGE=DENS100Y))
+
+CALC_CHAMP(reuse=MCVDENY, RESULTAT=MCVDENY, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DY",
+        VALE_CALC=1.3486563308038e-06,
+        VALE_REFE=1.3486399999999999e-06,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRZ",
+        VALE_CALC=2.1220114833861e-06,
+        VALE_REFE=2.12207e-06,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VY",
+        VALE_CALC=100.00000000001,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="VY",
+        VALE_CALC=-4.3192116550017e-12,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFZ",
+        VALE_CALC=50.0,
+        VALE_REFE=50.0,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MFZ",
+        VALE_CALC=1.0416667528546e-13,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=63661.977236883,
+        VALE_REFE=6.3662e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCVDENY,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-63661.977236883,
+        VALE_REFE=-6.3662e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# POUTRE DE SECTION RECTANGULAIRE VARIABLE
+#
+CARELRV = AFFE_CARA_ELEM(
+    MODELE=MO,
+    POUTRE=(
+        _F(
+            GROUP_MA="S13",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.1, 0.095),
+        ),
+        _F(
+            GROUP_MA="S34",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.095, 0.090),
+        ),
+        _F(
+            GROUP_MA="S45",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.090, 0.085),
+        ),
+        _F(
+            GROUP_MA="S56",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.085, 0.080),
+        ),
+        _F(
+            GROUP_MA="S67",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.080, 0.075),
+        ),
+        _F(
+            GROUP_MA="S78",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.075, 0.070),
+        ),
+        _F(
+            GROUP_MA="S89",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.070, 0.065),
+        ),
+        _F(
+            GROUP_MA="S910",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.065, 0.060),
+        ),
+        _F(
+            GROUP_MA="S1011",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.060, 0.055),
+        ),
+        _F(
+            GROUP_MA="S112",
+            SECTION="RECTANGLE",
+            VARI_SECT="AFFINE",
+            CARA=("HY", "HZ1", "HZ2"),
+            VALE=(0.05, 0.055, 0.050),
+        ),
+    ),
+)
+
+#
+# ------ FORC100X - FORCE PONCTUELLE FX = 100 N AU NOEUD N2 :
+#
+#
+
+MRVF100X = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELRV, EXCIT=_F(CHARGE=FORC100X))
+
+CALC_CHAMP(reuse=MRVF100X, RESULTAT=MRVF100X, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100X,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DX",
+        VALE_CALC=1.3862943611199e-07,
+        VALE_REFE=1.3862899999999999e-07,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="RELATIF",
+    )
+)
+
+#
+# EFFORT NORMAL A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="N",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT NORMAL A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="N",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=20000.0,
+        VALE_REFE=2.0e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=40000.0,
+        VALE_REFE=4.0e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# ------ FOR100Y - FORCE PONCTUELLE FY = 100 N AU NOEUD N2 :
+#
+
+MRVF100Y = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELRV, EXCIT=_F(CHARGE=FOR100Y))
+
+CALC_CHAMP(reuse=MRVF100Y, RESULTAT=MRVF100Y, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DY",
+        VALE_CALC=1.8545767878156e-04,
+        VALE_REFE=1.8969599999999999e-4,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=0.023,
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRZ",
+        VALE_CALC=2.9464554402876e-04,
+        VALE_REFE=3.02381e-4,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=0.027,
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VY",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="VY",
+        VALE_CALC=99.999999999971,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFZ",
+        VALE_CALC=99.99999999495,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MFZ",
+        VALE_CALC=2.955857780762e-12,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=2.3999999998788e06,
+        VALE_REFE=2.400000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-2.3999999998788e06,
+        VALE_REFE=-2.400000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVF100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.4188117347658e-07,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# ------ MOM100X - MOMENT DE TORSION  MX = 100 N.M AU NOEUD N2 :
+#
+
+MRVM100X = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELRV, EXCIT=_F(CHARGE=MOM100X))
+
+CALC_CHAMP(reuse=MRVM100X, RESULTAT=MRVM100X, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100X,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRX",
+        VALE_CALC=7.8817442937454e-04,
+        VALE_REFE=8.3506300000000004e-4,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=0.057000000000000002,
+    )
+)
+
+#
+# MOMENT DE TORSION A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MT",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE TORSION A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MT",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+#
+# ------ MOM100Y - MOMENT DE FLEXION  MY = 100 N.M AU NOEUD N2 :
+#
+#
+
+MRVM100Y = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELRV, EXCIT=_F(CHARGE=MOM100Y))
+
+CALC_CHAMP(reuse=MRVM100Y, RESULTAT=MRVM100Y, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DZ",
+        VALE_CALC=-1.1972505837432e-04,
+        VALE_REFE=-1.2e-4,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=3.0000000000000001e-3,
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRY",
+        VALE_CALC=3.5888200841529e-04,
+        VALE_REFE=3.6000000000000002e-4,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=4.0000000000000001e-3,
+    )
+)
+
+#
+# EFFORT TRANCHANT Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VZ",
+        VALE_CALC=1.1823431123048e-11,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT TRANCHANT Z A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="VZ",
+        VALE_CALC=-3.2741809263825e-11,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# MOMENT FLECHISSANT Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFY",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT FLECHISSANT Y A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MFY",
+        VALE_CALC=99.999999999999,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.200000e6,
+        VALE_REFE=1.200000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-1.200000e6,
+        VALE_REFE=-1.200000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=4.800000e6,
+        VALE_REFE=4.800000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVM100Y,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-4.800000e6,
+        VALE_REFE=-4.800000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S112",
+    )
+)
+
+
+#
+# ------ DENS100X - FORCE REPARTIE FX = 100 N
+#
+
+MRVD100X = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELRV, EXCIT=_F(CHARGE=DENS100X))
+
+CALC_CHAMP(reuse=MRVD100X, RESULTAT=MRVD100X, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVD100X,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DX",
+        VALE_CALC=6.1453848762838e-08,
+        VALE_REFE=6.1370600000000006e-08,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=2.0e-3,
+    )
+)
+
+#
+# EFFORT NORMAL A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVD100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="N",
+        VALE_CALC=100.0,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT NORMAL A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVD100X,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="N",
+        VALE_CALC=5.7731597280508e-14,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVD100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=20000.0,
+        VALE_REFE=2.0e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# SXX A X = L/2
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVD100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N7",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=13333.333333333,
+        VALE_REFE=1.33333e4,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S67",
+    )
+)
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVD100X,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=2.3092638912203e-11,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# ------ DENS100Y - FORCE REPARTIE FY = 100 N
+#
+
+MRVDENY = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELRV, EXCIT=_F(CHARGE=DENS100Y))
+
+CALC_CHAMP(reuse=MRVDENY, RESULTAT=MRVDENY, CONTRAINTE=("EFGE_ELNO", "SIPM_ELNO"))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DY",
+        VALE_CALC=6.7301622152057e-05,
+        VALE_REFE=6.8626499999999998e-05,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=0.02,
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRZ",
+        VALE_CALC=9.2728772808794e-05,
+        VALE_REFE=9.4847900000000004e-05,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=0.024,
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VY",
+        VALE_CALC=100.00000000003,
+        VALE_REFE=100.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# EFFORT TANGENTIEL Y A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="VY",
+        VALE_CALC=4.549249865704e-12,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFZ",
+        VALE_CALC=49.999999998019,
+        VALE_REFE=50.0,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE FLEXION Z A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="MFZ",
+        VALE_CALC=-5.4951876382603e-13,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+
+#
+# SXX A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=1.200000e6,
+        VALE_REFE=1.200000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="SIXXMIN",
+        VALE_CALC=-1.200000e6,
+        VALE_REFE=-1.200000e6,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-05,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+
+#
+# SXX A X = L
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MRVDENY,
+        NOM_CHAM="SIPM_ELNO",
+        GROUP_NO="N2",
+        NOM_CMP="SIXXMAX",
+        VALE_CALC=2.6376900663649e-08,
+        VALE_REFE=0.0,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="ABSOLU",
+        GROUP_MA="S112",
+    )
+)
+#
+# POUTRE DE SECTION GENERALE VARIABLE
+#
+#
+CARELGV = AFFE_CARA_ELEM(
+    MODELE=MO,
+    POUTRE=(
+        _F(
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            GROUP_MA="S13",
+            VALE=(1.0e-2, 9.025e-3, 8.33333e-6, 6.78755e-6, 8.33333e-6, 6.78755e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S34",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(9.025e-3, 8.1e-3, 6.78755e-6, 5.4675e-6, 6.78755e-6, 5.4675e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S45",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(8.1e-3, 7.225e-3, 5.4675e-6, 4.35005e-6, 5.4675e-6, 4.35005e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S56",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(7.225e-3, 6.4e-3, 4.35005e-6, 3.41333e-6, 4.35005e-6, 3.41333e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S67",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(6.4e-3, 5.625e-3, 3.41333e-6, 2.63672e-6, 3.41333e-6, 2.63672e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S78",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(5.625e-3, 4.9e-3, 2.63672e-6, 2.00083e-6, 2.63672e-6, 2.00083e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S89",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(4.9e-3, 4.225e-3, 2.00083e-6, 1.48755e-6, 2.00083e-6, 1.48755e-6, 1.0e0, 1.0e0),
+        ),
+        _F(
+            GROUP_MA="S910",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(
+                4.225e-3,
+                3.6e-3,
+                #                                                1.48755D-6 1.48755D-6
+                1.48755e-6,
+                1.08e-6,
+                1.48755e-6,
+                1.08e-6,
+                1.0e0,
+                1.0e0,
+            ),
+        ),
+        _F(
+            GROUP_MA="S1011",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(
+                3.6e-3,
+                3.025e-3,
+                #                                                 1.48755D-6 7.62552D-7
+                #                                                 1.48755D-6 7.62552D-7
+                1.08e-6,
+                7.62552e-7,
+                1.08e-6,
+                7.62552e-7,
+                1.0e0,
+                1.0e0,
+            ),
+        ),
+        _F(
+            GROUP_MA="S112",
+            SECTION="GENERALE",
+            VARI_SECT="HOMOTHETIQUE",
+            CARA=("A1", "A2", "IY1", "IY2", "IZ1", "IZ2", "JX1", "JX2"),
+            VALE=(3.025e-3, 2.5e-3, 7.62552e-7, 5.20833e-7, 7.62552e-7, 5.20833e-7, 1.0e0, 1.0e0),
+        ),
+    ),
+)
+
+#
+# ------ PENSENGX - FORCE DE PESANTEUR
+#
+
+MCGPESX = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA, CARA_ELEM=CARELGV, EXCIT=_F(CHARGE=PENSENGX))
+
+CALC_CHAMP(reuse=MCGPESX, RESULTAT=MCGPESX, CONTRAINTE=("EFGE_ELNO",))
+
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCGPESX,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DZ",
+        VALE_CALC=-3.8259353979902e-05,
+        VALE_REFE=-3.8259000000000001e-05,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+    )
+)
+
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCGPESX,
+        NOM_CHAM="DEPL",
+        GROUP_NO="N2",
+        NOM_CMP="DRY",
+        VALE_CALC=5.7387040016628e-05,
+        VALE_REFE=5.7388500000000001e-05,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+    )
+)
+
+#
+# EFFORT TANGENTIEL Z A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCGPESX,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="VZ",
+        VALE_CALC=-446.35499999997,
+        VALE_REFE=-446.33499999999998,
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-3,
+        CRITERE="RELATIF",
+        GROUP_MA="S13",
+    )
+)
+
+#
+# MOMENT DE FLEXION Y A X = 0
+#
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        RESULTAT=MCGPESX,
+        NOM_CHAM="EFGE_ELNO",
+        GROUP_NO="N1",
+        NOM_CMP="MFY",
+        VALE_CALC=175.35374999985,
+        VALE_REFE=175.35400000000001,
+        CRITERE="RELATIF",
+        REFERENCE="ANALYTIQUE",
+        PRECISION=1.0e-2,
+        GROUP_MA="S13",
+    )
+)
+
+#
+FIN()
+#

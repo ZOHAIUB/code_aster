@@ -1,0 +1,213 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+POURSUITE(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+IMPR_RESU(FORMAT="MED", UNITE=80, RESU=_F(RESULTAT=DEFOR, NOM_CHAM="DEPL", NOM_CMP=("DX", "DY")))
+
+TEST_RESU(
+    RESU=(
+        _F(
+            INST=10 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=9.851510270377133,
+            VALE_REFE=10.6,
+            PRECISION=0.16,
+        ),
+        _F(
+            INST=20 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=15.124433020763938,
+            VALE_REFE=15.4,
+            PRECISION=0.10000000000000001,
+        ),
+        _F(
+            INST=30 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=19.460267044016298,
+            VALE_REFE=20.0,
+            PRECISION=0.10000000000000001,
+        ),
+        _F(
+            INST=40 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=23.357529530449426,
+            VALE_REFE=24.699999999999999,
+            PRECISION=0.10000000000000001,
+        ),
+        _F(
+            INST=50 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=26.821121156112955,
+            VALE_REFE=28.199999999999999,
+            PRECISION=0.10000000000000001,
+        ),
+        _F(
+            INST=60 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=30.72048285415389,
+            VALE_REFE=33.0,
+            PRECISION=0.10000000000000001,
+        ),
+        _F(
+            INST=70 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=35.57057460545849,
+            VALE_REFE=37.399999999999999,
+            PRECISION=0.10000000000000001,
+        ),
+        _F(
+            INST=75 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=38.563909677794655,
+            VALE_REFE=44.0,
+            PRECISION=0.14000000000000001,
+        ),
+    )
+)
+
+# TESTS DE NON REGRESSION
+
+TEST_RESU(
+    RESU=(
+        _F(
+            INST=10 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=9.851510270377133,
+            VALE_REFE=9.9767507752960007,
+        ),
+        _F(
+            INST=20 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=15.124433020763938,
+            VALE_REFE=15.090528432791,
+        ),
+        _F(
+            INST=30 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=19.460267044016298,
+            VALE_REFE=19.344018539891,
+        ),
+        _F(
+            INST=40 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=23.357529530449426,
+            VALE_REFE=23.595071481369001,
+        ),
+        _F(
+            INST=50 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=26.821121156112955,
+            VALE_REFE=27.621841772658001,
+        ),
+        _F(
+            INST=60 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=30.72048285415389,
+            VALE_REFE=31.999777381796999,
+        ),
+        _F(
+            INST=70 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=35.57057460545849,
+            VALE_REFE=37.053707223632998,
+        ),
+        _F(
+            INST=75 * 0.01,
+            GROUP_NO="A2",
+            REFERENCE="SOURCE_EXTERNE",
+            RESULTAT=DEFOR,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            PRECISION=0.05,
+            VALE_CALC=38.563909677794655,
+            VALE_REFE=40.591280063619003,
+        ),
+    )
+)
+
+
+FIN()

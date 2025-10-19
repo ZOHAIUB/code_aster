@@ -1,0 +1,1653 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#
+#    K1       K2       K3       K4
+# # <><><>M1<><><> # <><><>M2<><><> #
+# NO1    NO2      NO3      NO4    NO5
+# SPEC1           SPEC2          SPEC3
+# DDS1            DDS2           DDS3
+##############################
+
+
+# NTA: dans ce cas test NTA1: on donne DDS =1 pour groupNO1 contenant N01 et N03
+# et DDS = 0 pour groupNO2 contenant N05
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+import numpy as np
+
+#
+
+MAILLAG0 = LIRE_MAILLAGE(FORMAT="ASTER")
+
+#
+MAILLAGE = CREA_MAILLAGE(
+    MAILLAGE=MAILLAG0,
+    CREA_POI1=(
+        _F(NOM_GROUP_MA="GROUP_NO_MASSE", GROUP_NO="GROUP_NO_MASSE"),
+        _F(NOM_GROUP_MA="P2", GROUP_NO="P2"),
+        _F(NOM_GROUP_MA="P4", GROUP_NO="P4"),
+    ),
+)
+#
+MAILLAGE = DEFI_GROUP(
+    reuse=MAILLAGE,
+    MAILLAGE=MAILLAGE,
+    CREA_GROUP_NO=(
+        _F(UNION=("GROUP_NO_PO1", "GROUP_NO_PO3"), NOM="groupeN1"),
+        _F(UNION=("GROUP_NO_PO5",), NOM="groupeN2"),
+    ),
+    ALARME="OUI",
+)
+#
+MODELE = AFFE_MODELE(
+    MAILLAGE=MAILLAGE,
+    AFFE=(
+        _F(
+            GROUP_MA=("GROUP_MA_RESK", "GROUP_MA_RES2K"),
+            PHENOMENE="MECANIQUE",
+            MODELISATION="DIS_T",
+        ),
+        _F(GROUP_MA=("GROUP_NO_MASSE",), PHENOMENE="MECANIQUE", MODELISATION="DIS_T"),
+    ),
+    VERI_JACOBIEN="OUI",
+)
+
+#
+
+CARA = AFFE_CARA_ELEM(
+    MODELE=MODELE,
+    DISCRET=(
+        _F(SYME="OUI", CARA="K_T_D_L", GROUP_MA="E12", REPERE="GLOBAL", VALE=(1.0e3, 1.0, 1.0)),
+        _F(
+            SYME="OUI",
+            CARA="M_T_L",
+            GROUP_MA="E12",
+            REPERE="GLOBAL",
+            VALE=(
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ),
+        ),
+        _F(SYME="OUI", CARA="K_T_D_L", GROUP_MA="E23", REPERE="GLOBAL", VALE=(1.0e3, 1.0, 1.0)),
+        _F(
+            SYME="OUI",
+            CARA="M_T_L",
+            GROUP_MA="E23",
+            REPERE="GLOBAL",
+            VALE=(
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ),
+        ),
+        _F(SYME="OUI", CARA="K_T_D_L", GROUP_MA="E34", REPERE="GLOBAL", VALE=(2.0e3, 1.0, 1.0)),
+        _F(
+            SYME="OUI",
+            CARA="M_T_L",
+            GROUP_MA="E34",
+            REPERE="GLOBAL",
+            VALE=(
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ),
+        ),
+        _F(SYME="OUI", CARA="K_T_D_L", GROUP_MA="E45", REPERE="GLOBAL", VALE=(2.0e3, 1.0, 1.0)),
+        _F(
+            SYME="OUI",
+            CARA="M_T_L",
+            GROUP_MA="E45",
+            REPERE="GLOBAL",
+            VALE=(
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ),
+        ),
+        _F(GROUP_MA="P2", CARA="M_T_D_N", SYME="OUI", VALE=10.0),
+        _F(GROUP_MA="P4", CARA="M_T_D_N", SYME="OUI", VALE=10.0),
+    ),
+)
+
+#
+
+MAT = DEFI_MATERIAU(ELAS=_F(E=1.6e11, NU=0.3, RHO=1.3e04))
+
+#
+
+CHAMPMAT = AFFE_MATERIAU(MAILLAGE=MAILLAGE, AFFE=_F(TOUT="OUI", MATER=MAT))
+
+#
+
+COND_LIM = AFFE_CHAR_MECA(
+    MODELE=MODELE,
+    DDL_IMPO=(
+        _F(GROUP_NO=("P1", "P3", "P5"), DX=0.0, DY=0.0, DZ=0.0),
+        _F(GROUP_NO="GROUP_NO_MASSE", DY=0.0, DZ=0.0),
+    ),
+)
+
+#
+
+RIGIELEM = CALC_MATR_ELEM(OPTION="RIGI_MECA", MODELE=MODELE, CARA_ELEM=CARA, CHARGE=COND_LIM)
+
+#
+
+MASSELEM = CALC_MATR_ELEM(OPTION="MASS_MECA", MODELE=MODELE, CARA_ELEM=CARA, CHARGE=COND_LIM)
+
+#
+
+NUMEROTA = NUME_DDL(MATR_RIGI=RIGIELEM)
+
+#
+
+MATRRIGI = ASSE_MATRICE(MATR_ELEM=RIGIELEM, NUME_DDL=NUMEROTA)
+
+MATRMASS = ASSE_MATRICE(MATR_ELEM=MASSELEM, NUME_DDL=NUMEROTA)
+
+#
+
+MAS = POST_ELEM(MASS_INER=_F(TOUT="OUI"), MODELE=MODELE, CARA_ELEM=CARA)
+
+#
+
+MODES = CALC_MODES(
+    MATR_RIGI=MATRRIGI,
+    CARA_ELEM=CARA,
+    CALC_FREQ=_F(NMAX_FREQ=2),
+    MATR_MASS=MATRMASS,
+    SOLVEUR_MODAL=_F(METHODE="SORENSEN"),
+)
+
+
+#
+
+MODES = NORM_MODE(reuse=MODES, MODE=MODES, NORME="TRAN")
+
+#
+
+MODES = CALC_CHAMP(reuse=MODES, RESULTAT=MODES, CONTRAINTE=("SIEF_ELGA", "EFGE_ELNO"))
+
+
+MODES = CALC_CHAMP(reuse=MODES, RESULTAT=MODES, FORCE="FORC_NODA")
+
+MODES = CALC_CHAMP(reuse=MODES, RESULTAT=MODES, FORCE="REAC_NODA")
+
+#
+# -----------------------------------------------------------------------
+#
+# CALCUL DES MODES STATIQUES POUR L'ENTRAINEMENT
+#
+# -----------------------------------------------------------------------
+
+MODE_STA = MODE_STATIQUE(
+    MATR_RIGI=MATRRIGI,
+    MATR_MASS=MATRMASS,
+    CARA_ELEM=CARA,
+    INFO=2,
+    MODE_STAT=_F(GROUP_NO=("GROUP_NO_PO1", "GROUP_NO_PO3", "GROUP_NO_PO5"), AVEC_CMP="DX"),
+)
+
+#
+
+MODE_STA = CALC_CHAMP(reuse=MODE_STA, RESULTAT=MODE_STA, CONTRAINTE=("SIEF_ELGA", "EFGE_ELNO"))
+
+
+MODE_STA = CALC_CHAMP(reuse=MODE_STA, RESULTAT=MODE_STA, FORCE="FORC_NODA")
+
+MODE_STA = CALC_CHAMP(reuse=MODE_STA, RESULTAT=MODE_STA, FORCE="REAC_NODA")
+
+
+#
+# -------------------------------
+#
+#   DEFINITION DU SEISME en VITE
+#
+# --------------------------------
+#
+
+SORA1 = DEFI_FONCTION(
+    NOM_PARA="FREQ",
+    VALE=(2.25079, 7.0 / (2 * np.pi * 2.25079), 3.1831, 5.0 / (2 * np.pi * 3.1831)),
+    INTERPOL="LOG",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+SORA2 = DEFI_FONCTION(
+    NOM_PARA="FREQ",
+    VALE=(2.25079, 7.7 / (2 * np.pi * 2.25079), 3.1831, 5.5 / (2 * np.pi * 3.1831)),
+    INTERPOL="LOG",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+SORA3 = DEFI_FONCTION(
+    NOM_PARA="FREQ",
+    VALE=(2.25079, 12.0 / (2 * np.pi * 2.25079), 3.1831, 6.0 / (2 * np.pi * 3.1831)),
+    INTERPOL="LOG",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+#
+SPEC1 = DEFI_NAPPE(
+    NOM_PARA="AMOR",
+    INTERPOL=("LIN", "LOG"),
+    INFO=2,
+    PARA=(0.0, 1.0),
+    PROL_GAUCHE="CONSTANT",
+    PROL_DROITE="CONSTANT",
+    FONCTION=(SORA1, SORA1),
+)
+SPEC2 = DEFI_NAPPE(
+    NOM_PARA="AMOR",
+    INTERPOL=("LIN", "LOG"),
+    INFO=2,
+    PARA=(0.0, 1.0),
+    PROL_GAUCHE="CONSTANT",
+    PROL_DROITE="CONSTANT",
+    FONCTION=(SORA2, SORA2),
+)
+SPEC3 = DEFI_NAPPE(
+    NOM_PARA="AMOR",
+    INTERPOL=("LIN", "LOG"),
+    INFO=2,
+    PARA=(0.0, 1.0),
+    PROL_GAUCHE="CONSTANT",
+    PROL_DROITE="CONSTANT",
+    FONCTION=(SORA3, SORA3),
+)
+
+
+#
+# REPONSE GLOBALE
+# calcul multi appui corrélé + nature VITE
+# --------------------------------
+# calcul 1: Tester FREQ + PRECISION +CRITERE+  LIST_APPUI
+
+RES1 = COMB_SISM_MODAL(
+    MODE_MECA=MODES,
+    AMOR_REDUIT=0.0,
+    TYPE_ANALYSE="MULT_APPUI",
+    APPUIS=(
+        _F(NOM="APP1", GROUP_NO=("GROUP_NO_PO1",)),
+        _F(NOM="APP2", GROUP_NO=("GROUP_NO_PO3",)),
+        _F(NOM="APP3", GROUP_NO=("GROUP_NO_PO5",)),
+    ),
+    SPECTRE=(
+        _F(NOM_APPUI="APP1", LIST_AXE=("X"), SPEC_OSCI=SPEC1, NATURE="VITE"),
+        _F(NOM_APPUI="APP2", LIST_AXE=("X"), SPEC_OSCI=SPEC2, NATURE="VITE"),
+        _F(NOM_APPUI="APP3", LIST_AXE=("X"), SPEC_OSCI=SPEC3, NATURE="VITE"),
+    ),
+    GROUP_APPUI_CORRELE=(_F(TOUT="OUI", NOM="GA1"),),
+    COMB_MODE=_F(TYPE="SRSS"),
+    OPTION=("DEPL", "REAC_NODA"),
+    TYPE_RESU=(
+        _F(TYPE="VALE_TOTA", NEWMARK="OUI"),
+        _F(
+            TYPE="VALE_SPEC",
+            FREQ=2.25079,  # mode 1
+            PRECISION=1.0e-3,
+            CRITERE="ABSOLU",
+            LIST_APPUI=("APP1", "APP2", "APP3"),
+            LIST_AXE="X",
+        ),
+    ),
+    INFO=2,
+)
+# REPONSE TOTALE
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="TOTA",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=3.67500129052e-02,
+            VALE_REFE=0.0367500000128258,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="TOTA",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.43750077500e-02,
+            VALE_REFE=0.0143750000166001,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# TEST RESU REAC_NODA
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="TOTA",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=3.6750012905e01,
+            VALE_REFE=36.750000012825800,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="TOTA",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=4.6659691809e01,
+            VALE_REFE=46.659672125420200,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="TOTA",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.8750015500e01,
+            VALE_REFE=28.750000033200200,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# REPONSE NEWMARK : R = +/-RX+/-0.4*RY+/-0.4RZ
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # NEWM_1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="NEWM_1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=3.67500129052e-02,
+            VALE_REFE=0.0367500000128258,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="NEWM_1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.43750077500e-02,
+            VALE_REFE=0.0143750000166001,
+            PRECISION=1.0e-3,
+        ),
+        # NEWM_2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="NEWM_2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.67500129052e-02,
+            VALE_REFE=-0.0367500000128258,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="NEWM_2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.43750077500e-02,
+            VALE_REFE=-0.0143750000166001,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# TEST RESU REAC_NODA
+TEST_RESU(
+    RESU=(
+        # NEWM_1
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="NEWM_1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=3.6750012905e01,
+            VALE_REFE=36.750000012825800,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="NEWM_1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=4.6659691809e01,
+            VALE_REFE=46.659672125420200,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="NEWM_1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.8750015500e01,
+            VALE_REFE=28.750000033200200,
+            PRECISION=1.0e-3,
+        ),
+        # NEWM_2
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="NEWM_2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-3.6750012905e01,
+            VALE_REFE=-36.750000012825800,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="NEWM_2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-4.6659691809e01,
+            VALE_REFE=-46.659672125420200,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="NEWM_2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-2.8750015500e01,
+            VALE_REFE=-28.750000033200200,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# REPONSE SPECTRALE POUR MODE 1
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.75000061453e-02,
+            VALE_REFE=0.0175000000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-7.33086981220e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.92500067598e-02,
+            VALE_REFE=0.0192500000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-8.06395679342e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-2.51344107847e-17,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.05289730608e-32,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+# TEST RESU REAC_NODA
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.750000e01,
+            VALE_REFE=-17.5000000061075,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-17.5000000061075,
+            VALE_REFE=-1.750000e01,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=1.4661739e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.925000e01,
+            VALE_REFE=-19.2500000067183,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.925000e01,
+            VALE_REFE=-19.2500000067183,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=1.6127913e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.5134410e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.5134410e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES1,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-2.1057946e-29,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+# calcul 2: Tester FREQ + PRECISION +CRITERE+  TOUT_APPUI
+list_freq8 = DEFI_LIST_REEL(VALE=[2.25079, 3.1831])
+RES2 = COMB_SISM_MODAL(
+    MODE_MECA=MODES,
+    AMOR_REDUIT=0.0,
+    TYPE_ANALYSE="MULT_APPUI",
+    APPUIS=(
+        _F(NOM="APP1", GROUP_NO=("GROUP_NO_PO1",)),
+        _F(NOM="APP2", GROUP_NO=("GROUP_NO_PO3",)),
+        _F(NOM="APP3", GROUP_NO=("GROUP_NO_PO5",)),
+    ),
+    SPECTRE=(
+        _F(NOM_APPUI="APP1", LIST_AXE=("X"), SPEC_OSCI=SPEC1, NATURE="VITE"),
+        _F(NOM_APPUI="APP2", LIST_AXE=("X"), SPEC_OSCI=SPEC2, NATURE="VITE"),
+        _F(NOM_APPUI="APP3", LIST_AXE=("X"), SPEC_OSCI=SPEC3, NATURE="VITE"),
+    ),
+    GROUP_APPUI_CORRELE=(_F(TOUT="OUI", NOM="GA1"),),
+    COMB_MODE=_F(TYPE="SRSS"),
+    OPTION=("DEPL", "REAC_NODA"),
+    TYPE_RESU=(
+        _F(TYPE="VALE_TOTA"),
+        _F(
+            TYPE="VALE_SPEC",
+            LIST_FREQ=list_freq8,
+            PRECISION=1.0e-3,
+            CRITERE="RELATIF",
+            TOUT_APPUI="OUI",
+            LIST_AXE="X",
+        ),
+    ),
+    INFO=2,
+)
+# REPONSE SPECTRALE POUR MODE 1
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.75000061453e-02,
+            VALE_REFE=0.0175000000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-7.33086981220e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.92500067598e-02,
+            VALE_REFE=0.0192500000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-8.06395679342e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-2.51344107847e-17,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.05289730608e-32,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+# TEST RESU REAC_NODA
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.750000e01,
+            VALE_REFE=-17.5000000061075,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-17.5000000061075,
+            VALE_REFE=-1.750000e01,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=1.4661739e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.925000e01,
+            VALE_REFE=-19.2500000067183,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.925000e01,
+            VALE_REFE=-19.2500000067183,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=1.6127913e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.5134410e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.5134410e-14,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-2.1057946e-29,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+# REPONSE SPECTRALE POUR MODE 2
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.9316175188e-34,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.4717782532e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.2379121570e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.8750023865e-03,
+            VALE_REFE=0.006875000007939,
+            PRECISION=1.0e-3,
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.5322691075e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=7.5000053634e-03,
+            VALE_REFE=0.007500000008661,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# TEST RESU REAC_NODA
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-6.93161751e-31,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.9435565064e-15,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=2.9435565064e-15,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=3.23791215704e-15,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.375000477e01,
+            VALE_REFE=-13.7500000158784,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.375000477e01,
+            VALE_REFE=-13.7500000158784,
+            PRECISION=1.0e-3,
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO1",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=3.5322691075e-15,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO3",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.500001072e01,
+            VALE_REFE=-15.0000000173219,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO5",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES2,
+            NOM_CHAM="REAC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-1.500001072e01,
+            VALE_REFE=-15.0000000173219,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# calcul  : Tester LIST_ORDRE
+list_ordre = DEFI_LIST_ENTI(VALE=[1, 2])
+
+RES3 = COMB_SISM_MODAL(
+    MODE_MECA=MODES,
+    AMOR_REDUIT=0.0,
+    TYPE_ANALYSE="MULT_APPUI",
+    APPUIS=(
+        _F(NOM="APP1", GROUP_NO=("GROUP_NO_PO1",)),
+        _F(NOM="APP2", GROUP_NO=("GROUP_NO_PO3",)),
+        _F(NOM="APP3", GROUP_NO=("GROUP_NO_PO5",)),
+    ),
+    SPECTRE=(
+        _F(NOM_APPUI="APP1", LIST_AXE=("X"), SPEC_OSCI=SPEC1, NATURE="VITE"),
+        _F(NOM_APPUI="APP2", LIST_AXE=("X"), SPEC_OSCI=SPEC2, NATURE="VITE"),
+        _F(NOM_APPUI="APP3", LIST_AXE=("X"), SPEC_OSCI=SPEC3, NATURE="VITE"),
+    ),
+    GROUP_APPUI_CORRELE=(_F(TOUT="OUI", NOM="GA1"),),
+    COMB_MODE=_F(TYPE="SRSS"),
+    OPTION=("DEPL",),
+    TYPE_RESU=(_F(TYPE="VALE_SPEC", LIST_ORDRE=list_ordre, TOUT_APPUI="OUI", LIST_AXE="X"),),
+    INFO=2,
+)
+# REPONSE SPECTRALE POUR MODE 1
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.75000061453e-02,
+            VALE_REFE=0.0175000000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-7.33086981220e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.92500067598e-02,
+            VALE_REFE=0.0192500000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-8.06395679342e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-2.51344107847e-17,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.05289730608e-32,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+
+# REPONSE SPECTRALE POUR MODE 2
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.9316175188e-34,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.4717782532e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.2379121570e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.8750023865e-03,
+            VALE_REFE=0.006875000007939,
+            PRECISION=1.0e-3,
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.5322691075e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=7.5000053634e-03,
+            VALE_REFE=0.007500000008661,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+
+# calcul 4: Tester NUME_ORDRE
+RES4 = COMB_SISM_MODAL(
+    MODE_MECA=MODES,
+    AMOR_REDUIT=0.0,
+    TYPE_ANALYSE="MULT_APPUI",
+    APPUIS=(
+        _F(NOM="APP1", GROUP_NO=("GROUP_NO_PO1",)),
+        _F(NOM="APP2", GROUP_NO=("GROUP_NO_PO3",)),
+        _F(NOM="APP3", GROUP_NO=("GROUP_NO_PO5",)),
+    ),
+    SPECTRE=(
+        _F(NOM_APPUI="APP1", LIST_AXE=("X"), SPEC_OSCI=SPEC1, NATURE="VITE"),
+        _F(NOM_APPUI="APP2", LIST_AXE=("X"), SPEC_OSCI=SPEC2, NATURE="VITE"),
+        _F(NOM_APPUI="APP3", LIST_AXE=("X"), SPEC_OSCI=SPEC3, NATURE="VITE"),
+    ),
+    GROUP_APPUI_CORRELE=(_F(TOUT="OUI", NOM="GA1"),),
+    COMB_MODE=_F(TYPE="SRSS"),
+    OPTION=("DEPL",),
+    TYPE_RESU=(_F(TYPE="VALE_SPEC", NUME_ORDRE=1, TOUT_APPUI="OUI", LIST_AXE="X"),),
+    INFO=2,
+)
+# REPONSE SPECTRALE POUR MODE 1
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES4,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.75000061453e-02,
+            VALE_REFE=0.0175000000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES4,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-7.33086981220e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES4,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.92500067598e-02,
+            VALE_REFE=0.0192500000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES4,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-8.06395679342e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+
+# calcul 5: Tester NUME_MODE
+RES5 = COMB_SISM_MODAL(
+    MODE_MECA=MODES,
+    AMOR_REDUIT=0.0,
+    TYPE_ANALYSE="MULT_APPUI",
+    APPUIS=(
+        _F(NOM="APP1", GROUP_NO=("GROUP_NO_PO1",)),
+        _F(NOM="APP2", GROUP_NO=("GROUP_NO_PO3",)),
+        _F(NOM="APP3", GROUP_NO=("GROUP_NO_PO5",)),
+    ),
+    SPECTRE=(
+        _F(NOM_APPUI="APP1", LIST_AXE=("X"), SPEC_OSCI=SPEC1, NATURE="VITE"),
+        _F(NOM_APPUI="APP2", LIST_AXE=("X"), SPEC_OSCI=SPEC2, NATURE="VITE"),
+        _F(NOM_APPUI="APP3", LIST_AXE=("X"), SPEC_OSCI=SPEC3, NATURE="VITE"),
+    ),
+    GROUP_APPUI_CORRELE=(_F(TOUT="OUI", NOM="GA1"),),
+    COMB_MODE=_F(TYPE="SRSS"),
+    OPTION=("DEPL",),
+    TYPE_RESU=(_F(TYPE="VALE_SPEC", NUME_MODE=2, TOUT_APPUI="OUI", LIST_AXE="X"),),
+    INFO=2,
+)
+# REPONSE SPECTRALE POUR MODE 2
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES5,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.9316175188e-34,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES5,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.4717782532e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES5,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.2379121570e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES5,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.8750023865e-03,
+            VALE_REFE=0.006875000007939,
+            PRECISION=1.0e-3,
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES5,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.5322691075e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES5,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=7.5000053634e-03,
+            VALE_REFE=0.007500000008661,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+
+# calcul 6: Tester TOUT_ORDRE
+RES6 = COMB_SISM_MODAL(
+    MODE_MECA=MODES,
+    AMOR_REDUIT=0.0,
+    TYPE_ANALYSE="MULT_APPUI",
+    APPUIS=(
+        _F(NOM="APP1", GROUP_NO=("GROUP_NO_PO1",)),
+        _F(NOM="APP2", GROUP_NO=("GROUP_NO_PO3",)),
+        _F(NOM="APP3", GROUP_NO=("GROUP_NO_PO5",)),
+    ),
+    SPECTRE=(
+        _F(NOM_APPUI="APP1", LIST_AXE=("X"), SPEC_OSCI=SPEC1, NATURE="VITE"),
+        _F(NOM_APPUI="APP2", LIST_AXE=("X"), SPEC_OSCI=SPEC2, NATURE="VITE"),
+        _F(NOM_APPUI="APP3", LIST_AXE=("X"), SPEC_OSCI=SPEC3, NATURE="VITE"),
+    ),
+    GROUP_APPUI_CORRELE=(_F(TOUT="OUI", NOM="GA1"),),
+    COMB_MODE=_F(TYPE="SRSS"),
+    OPTION=("DEPL",),
+    TYPE_RESU=(_F(TYPE="VALE_SPEC", TOUT_ORDRE="OUI", TOUT_APPUI="OUI", LIST_AXE="X"),),
+    INFO=2,
+)
+# REPONSE SPECTRALE POUR MODE 1
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.75000061453e-02,
+            VALE_REFE=0.0175000000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-7.33086981220e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.92500067598e-02,
+            VALE_REFE=0.0192500000,
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_1XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-8.06395679342e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+    )
+)
+
+
+# REPONSE SPECTRALE POUR MODE 2
+# TEST RESU DEPL
+TEST_RESU(
+    RESU=(
+        # APPUI: APP1
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.9316175188e-34,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP1",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.4717782532e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        # APPUI: APP2
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.2379121570e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP2",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=6.8750023865e-03,
+            VALE_REFE=0.006875000007939,
+            PRECISION=1.0e-3,
+        ),
+        # APPUI: APP3
+        _F(
+            GROUP_NO="GROUP_NO_PO2",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-3.5322691075e-18,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="GROUP_NO_PO4",
+            NOM_CAS="SPEC_2XAPP3",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RES6,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=7.5000053634e-03,
+            VALE_REFE=0.007500000008661,
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+# FIN
+FIN()

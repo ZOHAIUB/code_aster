@@ -1,0 +1,431 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#          VALIDATION DE CALC_COUPURE
+#
+#  DETAILS : MODELISATION DKT
+#            Mailles QUAD4
+#
+# - Based on analytical results of beam with one fixed support and point load on free ending.
+# - Computation with macr_elas_mult
+# - Applied loads for macr_elas_mult-shearLd2 is double than for fz
+
+N = 1.0
+MPa = 1.0
+mm = 1.0
+
+Pa = MPa * 1e-6
+m = mm * 1.0e3
+kN = N * 1.0e3
+
+L = 12.0 * m
+H = 3.0 * m
+B = 0.3 * m
+A = B * H
+d1 = 3.0 * m
+
+fx = 100.0 * kN
+fy = 6000.0 * kN
+fz = 600.0 * kN
+
+effortNormal = fy
+cisaillementPL = -fz
+cisaillementHP = -fx
+momentPL = -fz * L
+momentHP = -fx * L
+momentPL_d1 = -fz * (L - d1)
+momentHP_d1 = -fx * (L - d1)
+
+# NXX not tested (can exist but no analytical solution)
+
+DEBUT(
+    CODE="OUI",
+    # DEBUG=_F(SDVERI='OUI',),
+    ERREUR=_F(ERREUR_F="EXCEPTION"),
+    # IMPR_MACRO='OUI',
+)
+
+mesh = LIRE_MAILLAGE(FORMAT="MED", UNITE=20)
+
+cls = DEFI_MATERIAU(
+    ELAS=_F(
+        E=30000.0 * MPa,
+        NU=0.3,
+        # ~ RHO = 2.5E-3,
+    )
+)
+
+model = AFFE_MODELE(
+    AFFE=_F(MODELISATION="DST", PHENOMENE="MECANIQUE", TOUT="OUI"), MAILLAGE=mesh  # 'DST',
+)
+
+fieldmat = AFFE_MATERIAU(AFFE=_F(MATER=(cls,), TOUT="OUI"), MODELE=model)
+
+elemprop = AFFE_CARA_ELEM(
+    MODELE=model, COQUE=_F(GROUP_MA="ELEMENTS", EPAIS=300.0 * mm, VECTEUR=(0.0, 1.0, 0.0))
+)
+
+boundary = AFFE_CHAR_MECA(
+    MODELE=model,
+    DDL_IMPO=_F(GROUP_NO=("START",), DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+)
+
+
+# Shear force in the plane of the shell
+ch1 = AFFE_CHAR_MECA(MODELE=model, FORCE_ARETE=_F(GROUP_MA=("END",), FY=fy / H, FZ=fz / H))
+
+# Shear force orthogonal to the plane of the shell
+ch2 = AFFE_CHAR_MECA(MODELE=model, FORCE_ARETE=_F(GROUP_MA=("END",), FX=fx / H))
+
+reslin = MACRO_ELAS_MULT(
+    MODELE=model,
+    CHAM_MATER=fieldmat,
+    CARA_ELEM=elemprop,
+    CHAR_MECA_GLOBAL=boundary,
+    CAS_CHARGE=(
+        _F(NOM_CAS="ch1", SOUS_TITRE="Loading in the shell plane", CHAR_MECA=ch1, OPTION="SANS"),
+        _F(
+            NOM_CAS="ch2",
+            SOUS_TITRE="Loading orthogonal to the shell plane",
+            CHAR_MECA=ch2,
+            OPTION="SANS",
+        ),
+    ),
+    SOLVEUR=_F(METHODE="MULT_FRONT"),
+)
+
+tbcoup = CALC_COUPURE(
+    FORCE="FORC_NODA",
+    RESULTAT=reslin,
+    COUPURE=(
+        _F(NOM="START", GROUP_MA="ELEMENTS", GROUP_NO="START", POINT=(0, -1500, 0)),
+        _F(NOM="3m", GROUP_MA="ELTS_DROITES", GROUP_NO="no_3m", POINT=(0, 1500, 0)),
+        _F(
+            NOM="CHGT_REPERE",
+            GROUP_MA="ELEMENTS",
+            GROUP_NO="START",
+            POINT=(0, -1500, 0),
+            AXE_X=(0, 1, 0),
+            AXE_Y=(0, 0, 1),
+            AXE_Z=(1, 0, 0),
+        ),
+    ),
+)
+
+# ===================================== #
+# TEST COUPE RESULTANTE
+# ===================================== #
+# ------------------------- #
+# TEST COUPE START, ch1
+# ------------------------- #
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R2",
+    VALE_CALC=-6e6,
+    VALE_REFE=-effortNormal,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R3",
+    VALE_CALC=-6e5,
+    VALE_REFE=cisaillementPL,
+)
+
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M1",
+    VALE_CALC=-7.2e9,
+    VALE_REFE=momentPL,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M2",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_CALC=0,
+    VALE_REFE=0,
+    CRITERE="ABSOLU",
+    PRECISION=1,  # 1N.m autorise
+)
+
+# ------------------------- #
+# TEST COUPE 3m, ch1
+# ------------------------- #
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R2",
+    VALE_CALC=-6e6,
+    VALE_REFE=-effortNormal,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R3",
+    VALE_CALC=-6e5,
+    VALE_REFE=cisaillementPL,
+)
+
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M1",
+    VALE_CALC=-5.4e9,
+    VALE_REFE=momentPL_d1,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M2",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+# ------------------------- #
+# TEST COUPE START, ch2
+# ------------------------- #
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_CALC=-1e5,
+    VALE_REFE=cisaillementHP,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R2",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R3",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M1",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+# on fait le test en absolu : 0.1 N.m d'ecart correspond a un decalage du bras de levier de 0.1mm
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M2",
+    VALE_CALC=0,  # -0.11434221267700195,
+    VALE_REFE=0,
+    CRITERE="ABSOLU",
+    PRECISION=1,  # 1N.m autorise
+)
+
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_CALC=0,
+    VALE_REFE=-momentHP,
+)
+
+# ------------------------- #
+# TEST COUPE 3m, ch2
+# ------------------------- #
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_CALC=-1e5,
+    VALE_REFE=cisaillementHP,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R2",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R3",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M1",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M2",
+    VALE_CALC=0,  # -0.1146591529250145,
+    VALE_REFE=0,
+    CRITERE="ABSOLU",
+    PRECISION=1,  # 1N.m autorise
+)
+
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="3m"), _F(NOM_PARA="NOM_CAS", VALE_K="ch2")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_CALC=0,
+    VALE_REFE=-momentHP_d1,
+)
+
+# ------------------------- #
+# TEST COUPE START, ch1
+# ------------------------- #
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="CHGT_REPERE"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_CALC=-6e6,
+    VALE_REFE=-effortNormal,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="CHGT_REPERE"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R2",
+    VALE_CALC=-6e5,
+    VALE_REFE=cisaillementPL,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="CHGT_REPERE"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R3",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="CHGT_REPERE"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M1",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="CHGT_REPERE"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M2",
+    VALE_CALC=0,
+    VALE_REFE=0,
+)
+
+TEST_TABLE(
+    TABLE=tbcoup,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="CHGT_REPERE"), _F(NOM_PARA="NOM_CAS", VALE_K="ch1")),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_CALC=-7.2e9,
+    VALE_REFE=momentPL,
+)
+FIN()

@@ -1,0 +1,1165 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: jean-luc.flejou at edf.fr
+
+from math import pi
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+MA = LIRE_MAILLAGE(FORMAT="MED")
+
+DEFI_GROUP(reuse=MA, MAILLAGE=MA, CREA_GROUP_MA=_F(NOM="TOUT", TOUT="OUI"))
+
+# ------VARIABLES GLOBALES --------------------------------
+
+# Module d'Young
+E = 200e9
+# Coefficient de Poisson
+NU = 0.3
+# Module de cisaillement
+G = E / (2.0 * (1.0 + NU))
+# Masse volumique
+RHO = 7800
+# Corefficient de dilatation thermique
+ALPHA = 1e-5
+# Rayon externe du tuyau
+R = 0.040
+# Epaisseur du tuyau
+EP = 0.004
+# Longueur du tuyau
+L = 5.0
+# Aire de la section
+S = pi * (R**2 - (R - EP) ** 2)
+# Moment d'inertie de la section
+I = 0.25 * pi * (R**4 - (R - EP) ** 4)
+# Coefficient de cisaillement de Timoshenko
+PHI = 12.0 * E * I / (L**2 * G * S)
+# Ampltiude de la force / du moment
+FM = 5.0e2
+# Projection de la force / moment sur les deux axes (le tuyau est porté par (4, 3, 0) et de longueur 5)
+FM1 = 3.0e2
+FM2 = 4.0e2
+# Amplitude de la pression interne
+P = 1.0e7
+# Amplitude de la gravité
+g = 10.0
+# Force linéique équivalent à la force gravitaire
+FLG = RHO * S * g
+# Chargement thermique
+DELTA_T = 200.0
+# Nombre de sous points d'intégration dans la circonférence (à multiplier *2 + 1)
+NB_CIRCO = 16
+# Nombre de sous points d'intégration dans l'épaisseur (à multiplier *2 + 1)
+NB_EP = 3
+
+# ------CARACTERISTIQUES ELEMENTAIRES----------------------
+
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="TUYAU_6M"))
+
+CAREL = AFFE_CARA_ELEM(
+    MODELE=MO,
+    POUTRE=_F(
+        GROUP_MA="TOUT",
+        SECTION="CERCLE",
+        CARA=("R", "EP"),
+        VALE=(R, EP),
+        MODI_METRIQUE="NON",
+        TUYAU_NSEC=NB_CIRCO,
+        TUYAU_NCOU=NB_EP,
+    ),
+    ORIENTATION=_F(GROUP_NO="A", CARA="GENE_TUYAU", VALE=(0.0, 0.0, -1.0)),
+)
+
+# -------CARACTERISTIQUES DU MATERIAUX----------------------
+
+
+MAT = DEFI_MATERIAU(ELAS=_F(E=E, NU=NU, RHO=RHO, ALPHA=ALPHA))
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MAT))
+
+MASSIN = POST_ELEM(MODELE=MO, CHAM_MATER=CHMAT, CARA_ELEM=CAREL, MASS_INER=_F(TOUT="OUI"))
+
+TEST_TABLE(
+    VALE_CALC=RHO * S * L,
+    NOM_PARA="MASSE",
+    TABLE=MASSIN,
+    FILTRE=_F(NOM_PARA="LIEU", VALE_K="00000001"),
+)
+
+TEST_TABLE(
+    VALE_CALC=2.0, NOM_PARA="CDG_X", TABLE=MASSIN, FILTRE=_F(NOM_PARA="LIEU", VALE_K="00000001")
+)
+
+TEST_TABLE(
+    VALE_CALC=1.5, NOM_PARA="CDG_Y", TABLE=MASSIN, FILTRE=_F(NOM_PARA="LIEU", VALE_K="00000001")
+)
+
+TEST_TABLE(
+    CRITERE="ABSOLU",
+    VALE_CALC=1.0e-14,  # Ne pas mettre à 0, car VALE_CALC=0. conduit à un test ignoré
+    NOM_PARA="CDG_Z",
+    TABLE=MASSIN,
+    FILTRE=_F(NOM_PARA="LIEU", VALE_K="00000001"),
+)
+
+CHAR0 = AFFE_CHAR_MECA(MODELE=MO, DDL_IMPO=_F(GROUP_NO="A", BLOCAGE=("DEPLACEMENT", "ROTATION")))
+
+# FX LOCAL
+
+CHAR1 = AFFE_CHAR_MECA(MODELE=MO, FORCE_NODALE=_F(GROUP_NO="B", FX=FM2, FY=FM1))
+
+# FY LOCAL
+
+CHAR2 = AFFE_CHAR_MECA(MODELE=MO, FORCE_NODALE=_F(GROUP_NO="B", FX=-FM1, FY=FM2))
+
+# FZ LOCAL
+
+CHAR3 = AFFE_CHAR_MECA(MODELE=MO, FORCE_NODALE=_F(GROUP_NO="B", FZ=FM))
+
+# MX LOCAL
+
+
+CHAR4 = AFFE_CHAR_MECA(MODELE=MO, FORCE_NODALE=_F(GROUP_NO="B", MX=FM2, MY=FM1))
+
+# MY LOCAL
+
+
+CHAR5 = AFFE_CHAR_MECA(MODELE=MO, FORCE_NODALE=_F(GROUP_NO="B", MX=-FM1, MY=FM2))
+
+# MZ LOCAL
+
+
+CHAR6 = AFFE_CHAR_MECA(MODELE=MO, FORCE_NODALE=_F(GROUP_NO="B", MZ=FM))
+
+# PRESSION
+CHAR7 = AFFE_CHAR_MECA(MODELE=MO, FORCE_TUYAU=_F(TOUT="OUI", PRES=P))
+
+# GRAVITE
+
+CHAR8 = AFFE_CHAR_MECA(MODELE=MO, PESANTEUR=_F(GRAVITE=g, DIRECTION=(0.0, 0.0, -1.0)))
+
+# FORCE LINEIQUE
+
+CHAR9 = AFFE_CHAR_MECA(MODELE=MO, FORCE_POUTRE=_F(GROUP_MA="TOUT", FZ=-FLG))
+# FORCE LINEIQUE FONCTION
+
+F1 = DEFI_FONCTION(
+    NOM_PARA="X", VALE=(-0.1, -FLG, 10.1, -FLG), PROL_GAUCHE="CONSTANT", PROL_DROITE="CONSTANT"
+)
+
+CHAR9B = AFFE_CHAR_MECA_F(MODELE=MO, FORCE_POUTRE=_F(GROUP_MA="TOUT", FZ=F1))
+
+RESU = MACRO_ELAS_MULT(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    CARA_ELEM=CAREL,
+    CHAR_MECA_GLOBAL=CHAR0,
+    CAS_CHARGE=(
+        _F(NOM_CAS="CHARGE NUMERO 1 ", CHAR_MECA=CHAR1, SOUS_TITRE="FX LOCAL"),
+        _F(NOM_CAS="CHARGE NUMERO 2", CHAR_MECA=CHAR2, SOUS_TITRE="FY LOCAL "),
+        _F(NOM_CAS="CHARGE NUMERO 3", CHAR_MECA=CHAR3, SOUS_TITRE="FZ LOCAL "),
+        _F(NOM_CAS="CHARGE NUMERO 4 ", CHAR_MECA=CHAR4, SOUS_TITRE="MX LOCAL"),
+        _F(NOM_CAS="CHARGE NUMERO 5", CHAR_MECA=CHAR5, SOUS_TITRE="MY LOCAL "),
+        _F(NOM_CAS="CHARGE NUMERO 6", CHAR_MECA=CHAR6, SOUS_TITRE="MZ LOCAL "),
+        _F(NOM_CAS="CHARGE NUMERO 7", CHAR_MECA=CHAR7, SOUS_TITRE="PRESSION"),
+        _F(NOM_CAS="CHARGE NUMERO 8", CHAR_MECA=CHAR8, SOUS_TITRE="GRAVITE"),
+        _F(NOM_CAS="CHARGE NUMERO 9", CHAR_MECA=CHAR9, SOUS_TITRE="LINEIQUE"),
+        _F(NOM_CAS="CHARGE NUMERO 91", CHAR_MECA=CHAR9B, SOUS_TITRE="LINEIQUE"),
+    ),
+)
+
+RESU = CALC_CHAMP(
+    reuse=RESU, RESULTAT=RESU, CONTRAINTE=("EFGE_ELNO",), DEFORMATION=("EPSI_ELGA", "DEGE_ELNO")
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.0470719937698085e-05,
+            VALE_REFE=FM2 * L / (E * S),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 1 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=7.853039958642595e-06,
+            VALE_REFE=FM1 * L / (E * S),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 1 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            VALE_CALC=523535.99701372016,
+            VALE_REFE=FM / S,
+            PRECISION=0.02,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 1 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=2.617679985068182e-06,
+            VALE_REFE=FM / (E * S),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 1 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="N",
+            VALE_CALC=499.9999999999395,
+            VALE_REFE=FM,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 1 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-0.09064968662583503,
+            VALE_REFE=-FM1 * (L**3) * (4.0 + PHI) / (12.0 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 2 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=0.12086624883445385,
+            VALE_REFE=FM2 * (L**3) * (4.0 + PHI) / (12.0 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 2 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRZ",
+            VALE_CALC=0.04531581059962898,
+            VALE_REFE=FM * (L**2) / (2.0 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 2 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DZ",
+            VALE_CALC=0.15108281105596313,
+            VALE_REFE=FM * (L**3) * (4.0 + PHI) / (12.0 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 3 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRX",
+            VALE_CALC=0.02718948636156927,
+            VALE_REFE=FM1 * (L**2) / (2.0 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 3 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRY",
+            VALE_CALC=-0.036252648482232294,
+            VALE_REFE=-FM2 * (L**2) / (2.0 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 3 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRX",
+            VALE_CALC=0.01885309684530403,
+            VALE_REFE=FM2 * L / (G * 2.0 * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRY",
+            VALE_CALC=0.014139822634008373,
+            VALE_REFE=FM1 * L / (G * 2.0 * I),
+            PRECISION=0.029999999999999999,
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXY",
+            VALE_CALC=-13777263.079286896,
+            VALE_REFE=-FM * (R - 0.5 * EP) / (2 * I),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXY",
+            VALE_CALC=-0.00017910442003072905,
+            VALE_REFE=-FM * (R - 0.5 * EP) / (G * 2 * I),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXY",
+            VALE_CALC=-13777263.079294875,
+            VALE_REFE=-FM * (R - 0.5 * EP) / (2 * I),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXY",
+            VALE_CALC=-0.00017910442003083113,
+            VALE_REFE=-FM * (R - 0.5 * EP) / (G * 2 * I),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="MT",
+            VALE_CALC=499.99999999997556,
+            VALE_REFE=FM,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DZ",
+            VALE_CALC=-0.04531581060272745,
+            VALE_REFE=-FM * L**2 / (2 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRX",
+            VALE_CALC=-0.010875794520422633,
+            VALE_REFE=-FM1 * L / (E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRY",
+            VALE_CALC=0.014501059360603986,
+            VALE_REFE=FM2 * L / (E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=NB_CIRCO + 1,  # On prend le point à l'opposé de la section
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            VALE_CALC=27697644.128239572,
+            VALE_REFE=FM * (R - 0.5 * EP) / I,
+            PRECISION=0.02,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=NB_CIRCO + 1,  # On prend le point à l'opposé de la section
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=0.00013775930428131018,
+            VALE_REFE=FM * (R - 0.5 * EP) / (E * I),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="MFY",
+            VALE_CALC=499.9999999881759,
+            VALE_REFE=FM,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-0.027189486359776454,
+            VALE_REFE=-FM1 * L**2 / (2 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=0.03625264847970385,
+            VALE_REFE=FM2 * L**2 / (2 * E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DRZ",
+            VALE_CALC=0.01812632420001846,
+            VALE_REFE=FM * L / (E * I),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            SOUS_POINT=NB_CIRCO / 2 + 1,  # On prend le point au quart de la section
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIXX",
+            VALE_CALC=27697644.128240228,
+            VALE_REFE=FM * (R - 0.5 * EP) / I,
+            PRECISION=0.02,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            SOUS_POINT=NB_CIRCO / 2 + 1,  # On prend le point au quart de la section
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=0.00013775930428130227,
+            VALE_REFE=FM * (R - 0.5 * EP) / (E * I),
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="MFZ",
+            VALE_CALC=499.99999999124384,
+            VALE_REFE=FM,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="WO",
+            VALE_CALC=1.7099999999319804e-05,
+            VALE_REFE=P
+            * ((R - EP) ** 2)
+            * (R - 0.5 * EP)
+            / (E * (R**2 - (R - EP) ** 2))
+            * (1 - NU + (1 + NU) * R**2 / (R - 0.5 * EP) ** 2),
+            PRECISION=0.040000000000000001,
+            NOM_CAS="CHARGE NUMERO 7 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIYY",
+            VALE_CALC=89999999.99998528,
+            VALE_REFE=(R - EP) / EP * P,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 7 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=0.0004499999999999946,
+            VALE_REFE=(R - EP) / EP * P / E,
+            PRECISION=0.02,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 7 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            SOUS_POINT=(2 * NB_CIRCO + 1) * (2 * NB_EP + 1),
+            RESULTAT=RESU,
+            NOM_CHAM="SIEF_ELGA",
+            NOM_CMP="SIYY",
+            VALE_CALC=90000000.0000144,
+            VALE_REFE=(R - EP) / EP * P,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 7 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=2,
+            SOUS_POINT=(2 * NB_CIRCO + 1) * (2 * NB_EP + 1),
+            RESULTAT=RESU,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=0.0004500000000000095,
+            VALE_REFE=(R - EP) / EP * P / E,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+            NOM_CAS="CHARGE NUMERO 7 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DZ",
+            VALE_CALC=-0.04220784792735603,
+            VALE_REFE=-FLG * (L**4) / (8 * E * I) - FLG * (L**2) / (2 * G * S),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 8 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="MFY",
+            VALE_CALC=930.6890733607754,
+            VALE_REFE=FLG * (L**2) / 2,
+            PRECISION=0.029999999999999999,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 8 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DZ",
+            VALE_CALC=-0.04220784792735594,
+            VALE_REFE=-FLG * (L**4) / (8 * E * I) - FLG * (L**2) / (2 * G * S),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 9 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="MFY",
+            VALE_CALC=930.6890733607735,
+            VALE_REFE=FLG * (L**2) / 2,
+            PRECISION=0.029999999999999999,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 9 ",
+        ),
+    )
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DZ",
+            VALE_CALC=-0.04220784792735594,
+            VALE_REFE=-FLG * (L**4) / (8 * E * I) - FLG * (L**2) / (2 * G * S),
+            PRECISION=1.0e-2,
+            NOM_CAS="CHARGE NUMERO 91",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            RESULTAT=RESU,
+            NOM_CHAM="EFGE_ELNO",
+            NOM_CMP="MFY",
+            VALE_CALC=930.6890733607735,
+            VALE_REFE=FLG * (L**2) / 2,
+            PRECISION=0.029999999999999999,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 91",
+        ),
+    )
+)
+
+# Solutions analytiques pour les deformations generalisees de poutre DEGE_ELNO
+
+# Solution analytique chargement 1 Fx local
+EPXX = FM / E / S
+# Solution analytique chargement 2 Fy local
+GAXY = FM / G / S
+KZF = FM * L / E / I
+# Solution analytique chargement 3 Fz local
+GAXZ = FM / G / S
+KYF = -FM * L / E / I
+# Solution analytique chargement 4 Mx local
+GAT = FM / G / (2 * I)
+# Solution analytique chargement 2 My local
+KYM = FM / E / I
+# Solution analytique chargement 3 Mz local
+KZM = FM / E / I
+
+TEST_RESU(
+    RESU=(
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="EPXX",
+            VALE_CALC=2.6176799850721995e-06,
+            VALE_REFE=EPXX,
+            PRECISION=1.0e-2,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 1 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="GAXY",
+            VALE_CALC=7.441150541285755e-06,
+            VALE_REFE=GAXY,
+            PRECISION=0.33000000000000002,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 2 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="GAXZ",
+            VALE_CALC=7.441150542230486e-06,
+            VALE_REFE=GAXZ,
+            PRECISION=0.33000000000000002,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 3 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="KZ",
+            VALE_CALC=0.018118357154990335,
+            VALE_REFE=KZF,
+            PRECISION=0.012999999999999999,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 2 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="KY",
+            VALE_CALC=-0.018118357156899613,
+            VALE_REFE=KYF,
+            PRECISION=0.012999999999999999,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 3 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="GAT",
+            VALE_CALC=0.004713274211324933,
+            VALE_REFE=GAT,
+            PRECISION=1.0e-2,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 4 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="KY",
+            VALE_CALC=0.003625264867597068,
+            VALE_REFE=KYM,
+            PRECISION=1.0e-2,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 5 ",
+        ),
+        _F(
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESU,
+            NOM_CHAM="DEGE_ELNO",
+            GROUP_NO="N1",
+            NOM_CMP="KZ",
+            VALE_CALC=0.003625264867119319,
+            VALE_REFE=KZM,
+            PRECISION=1.0e-2,
+            GROUP_MA="M1",
+            NOM_CAS="CHARGE NUMERO 6 ",
+        ),
+    )
+)
+
+# DILATATION THERMIQUE
+TEMP = CREA_CHAMP(
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_TEMP_R",
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", NOM_CMP="TEMP", VALE=DELTA_T),
+)
+
+TEMPER = CREA_RESU(
+    OPERATION="AFFE", TYPE_RESU="EVOL_THER", AFFE=_F(NOM_CHAM="TEMP", INST=0.0, CHAM_GD=TEMP)
+)
+
+
+CHMAT1 = AFFE_MATERIAU(
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", MATER=MAT),
+    AFFE_VARC=_F(TOUT="OUI", EVOL=TEMPER, NOM_VARC="TEMP", NOM_CHAM="TEMP", VALE_REF=0.0),
+)
+
+
+REST = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMAT1, CARA_ELEM=CAREL, EXCIT=(_F(CHARGE=CHAR0),))
+
+REST = CALC_CHAMP(reuse=REST, RESULTAT=REST, DEFORMATION=("EPSI_ELGA",), CONTRAINTE=("EFGE_ELNO",))
+
+REST = CALC_CHAMP(reuse=REST, FORCE="FORC_NODA", RESULTAT=REST)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=0.007999999998009504,
+            VALE_REFE=DELTA_T * ALPHA * L * (FM2 / FM),
+            PRECISION=1.0e-2,
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DY",
+            VALE_CALC=0.006000000002683046,
+            VALE_REFE=DELTA_T * ALPHA * L * (FM1 / FM),
+            PRECISION=1.0e-2,
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="FORC_NODA",
+            NOM_CMP="DX",
+            VALE_CALC=-3.0428607340672043e-08,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="FORC_NODA",
+            NOM_CMP="DY",
+            VALE_CALC=-1.8733782159782887e-08,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="FORC_NODA",
+            NOM_CMP="DZ",
+            VALE_CALC=8.07125965e-21,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="FORC_NODA",
+            NOM_CMP="DRX",
+            VALE_CALC=2.9349874398899326e-11,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="FORC_NODA",
+            NOM_CMP="DRY",
+            VALE_CALC=-3.913316585480304e-11,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            GROUP_NO="B",
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=REST,
+            NOM_CHAM="FORC_NODA",
+            NOM_CMP="DRZ",
+            VALE_CALC=-1.201616155310885e-10,
+            VALE_REFE=0.0,
+            CRITERE="ABSOLU",
+        ),
+        _F(
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=120,
+            RESULTAT=REST,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPXX",
+            VALE_CALC=0.001999999999999826,
+            VALE_REFE=DELTA_T * ALPHA,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+        ),
+        _F(
+            INST=0.0,
+            REFERENCE="ANALYTIQUE",
+            POINT=1,
+            SOUS_POINT=120,
+            RESULTAT=REST,
+            NOM_CHAM="EPSI_ELGA",
+            NOM_CMP="EPYY",
+            VALE_CALC=0.0020000000000000907,
+            VALE_REFE=DELTA_T * ALPHA,
+            PRECISION=1.0e-2,
+            GROUP_MA="M18",
+        ),
+    )
+)
+
+# CALCUL MODAL
+
+
+RIGI = CALC_MATR_ELEM(
+    MODELE=MO, CHARGE=(CHAR0,), CARA_ELEM=CAREL, CHAM_MATER=CHMAT, OPTION="RIGI_MECA"
+)
+
+NUM = NUME_DDL(MATR_RIGI=RIGI)
+
+ASSEMBLAGE(
+    MODELE=MO,
+    CARA_ELEM=CAREL,
+    CHARGE=(CHAR0,),
+    CHAM_MATER=CHMAT,
+    NUME_DDL=NUM,
+    MATR_ASSE=(
+        _F(MATRICE=CO("MATASSR1"), OPTION="RIGI_MECA"),
+        _F(MATRICE=CO("MATASSM1"), OPTION="MASS_MECA"),
+    ),
+)
+
+MODES = CALC_MODES(
+    MATR_RIGI=MATASSR1, OPTION="CENTRE", CALC_FREQ=_F(NMAX_FREQ=14, FREQ=1.0), MATR_MASS=MATASSM1
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=3.045025726818158,
+            VALE_REFE=3.0490368,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=2,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=3.0450257275086825,
+            VALE_REFE=3.0490368,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=3,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=19.057796072133282,
+            VALE_REFE=19.080406,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=4,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=19.057796072226775,
+            VALE_REFE=19.080406,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=5,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=53.25230854056723,
+            VALE_REFE=53.301747,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=6,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=53.25230854059633,
+            VALE_REFE=53.301747,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=7,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=104.05267969289424,
+            VALE_REFE=104.09877,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=8,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=104.05267969289824,
+            VALE_REFE=104.09877,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=9,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=157.01857957667528,
+            VALE_REFE=157.01857,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=10,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=171.4049432986286,
+            VALE_REFE=171.33874,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=11,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=171.4049432986286,
+            VALE_REFE=171.33874,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=12,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=253.18322802572987,
+            VALE_REFE=253.18484,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=13,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=255.0414186264443,
+            VALE_REFE=254.60565,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=14,
+            PARA="FREQ",
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=MODES,
+            VALE_CALC=255.0414186264696,
+            VALE_REFE=254.60565,
+            CRITERE="RELATIF",
+            PRECISION=5.0e-3,
+        ),
+    )
+)
+
+FIN()

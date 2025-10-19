@@ -1,0 +1,10 @@
+P time_limit 300
+P memory_limit 1012
+P ncpus 1
+P mpi_nbcpu 2
+P mpi_nbnoeud 1
+P testlist verification parallel
+
+F comm sdls119a.comm D 1
+F mmed sdls119a.mmed D 20
+F nom sdls119a.py D 0

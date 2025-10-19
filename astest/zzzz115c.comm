@@ -1,0 +1,364 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#          VALIDATION DE CALC_COUPURE
+#
+#  DETAILS : MODELISATION DKT
+#            Mailles QUAD4
+#
+# - Based on analytical results of beam with one fixed support and point load on free ending.
+# - Computation with macr_elas_mult
+# - Applied loads for macr_elas_mult-shearLd2 is double than for fz
+
+DEBUT(CODE="OUI", ERREUR=_F(ERREUR_F="EXCEPTION"))
+
+N = 1.0
+MPa = 1.0
+mm = 1.0
+ton = 1.0
+sec = 1.0
+
+Pa = MPa * 1e-6
+m = mm * 1.0e3
+kN = N * 1.0e3
+kg = ton * 1.0e-3
+
+
+L = 12.0 * m
+H = 3.0 * m
+B = 0.3 * m
+A = B * H
+d1 = 3.0 * m
+d2 = 3.15 * m
+
+young = 30000.0 * MPa
+rho = 2.5e-9 * ton / mm**3
+
+A = B * H
+Imin = (H * B**3) / 12.0
+masse = rho * A
+valSpectre = 5000.0
+csi = 0.04
+
+mesh = LIRE_MAILLAGE(FORMAT="MED", UNITE=20)
+
+cls = DEFI_MATERIAU(ELAS=_F(E=young, NU=0.3, RHO=rho))
+
+model = AFFE_MODELE(
+    AFFE=_F(MODELISATION="DKT", PHENOMENE="MECANIQUE", TOUT="OUI"), MAILLAGE=mesh  # 'DST',
+)
+
+fieldmat = AFFE_MATERIAU(AFFE=_F(MATER=(cls,), TOUT="OUI"), MODELE=model)
+
+elemprop = AFFE_CARA_ELEM(
+    MODELE=model, COQUE=_F(GROUP_MA="ELEMENTS", EPAIS=300.0 * mm, VECTEUR=(0.0, 1.0, 0.0))
+)
+
+boundary = AFFE_CHAR_MECA(
+    MODELE=model,
+    DDL_IMPO=_F(GROUP_NO=("START",), DX=0.0, DY=0.0, DZ=0.0, DRX=0.0, DRY=0.0, DRZ=0.0),
+)
+
+ASSEMBLAGE(
+    MODELE=model,
+    CHAM_MATER=fieldmat,
+    CARA_ELEM=elemprop,
+    CHARGE=(boundary,),  # liaison),
+    NUME_DDL=CO("NUMEDDL"),
+    MATR_ASSE=(
+        _F(MATRICE=CO("RIGIDITE"), OPTION="RIGI_MECA"),
+        _F(MATRICE=CO("MASSE"), OPTION="MASS_MECA"),
+    ),
+)
+
+MODMECA = CALC_MODES(
+    MATR_RIGI=RIGIDITE,
+    OPTION="BANDE",
+    CARA_ELEM=elemprop,
+    CHAM_MATER=fieldmat,
+    CALC_FREQ=_F(FREQ=(0.0, 30.0)),
+    MATR_MASS=MASSE,
+    NORM_MODE=_F(NORME="MASS_GENE"),  # MASS_GENE
+    INFO=2,
+)
+
+EXTR = EXTR_MODE(FILTRE_MODE=_F(MODE=MODMECA, NUME_MODE=1))
+
+ACCE = DEFI_FONCTION(
+    NOM_PARA="FREQ",
+    INTERPOL="LIN",
+    PROL_DROITE="CONSTANT",
+    PROL_GAUCHE="CONSTANT",
+    VALE=(0.0, valSpectre, 1.0, valSpectre),
+)
+
+SPECT = DEFI_NAPPE(
+    NOM_PARA="AMOR", INTERPOL=("LIN", "LIN"), PARA=(0.001, 0.1), FONCTION=(ACCE, ACCE)
+)
+
+MODE_STA = MODE_STATIQUE(
+    MATR_RIGI=RIGIDITE,
+    MATR_MASS=MASSE,
+    PSEUDO_MODE=_F(AXE=("X", "Y", "Z")),
+    CARA_ELEM=elemprop,
+    CHAM_MATER=fieldmat,
+)
+
+##########################
+# Verif pour le premier mode seul, acceleration en X uniquement : mode de flexion -> moment d'encastrement a la base
+##########################
+freq = 1.1562763352925387  # valeurs calculees par code_aster
+moment_modal = 1.87357e06
+amor = 0.04
+acce = 5000.0
+pulsation = 2 * pi * freq
+fact_parti_dx = 4.082532344968756
+
+moment_phys_theorique = fact_parti_dx * acce * moment_modal / pulsation**2
+moment_phys_calcule = 7.24580e08
+
+EXTR1 = EXTR_MODE(FILTRE_MODE=_F(MODE=MODMECA, NUME_MODE=1))
+
+t1 = CALC_COUPURE(
+    FORCE="REAC_NODA",
+    RESULTAT=EXTR1,
+    MODAL_SPECTRAL="OUI",
+    COMB_MODE="CQC",
+    AMOR_REDUIT=csi,
+    SPEC_OSCI=(SPECT, SPECT, SPECT),
+    ECHELLE=(1, 0, 0),
+    MODE_SIGNE="NON",
+    COMB_DIRECTION="QUAD",
+    COUPURE=(_F(NOM="START", GROUP_MA="ELEMENTS", GROUP_NO="START", POINT=(0, -1500, 0)),),
+)
+
+TEST_TABLE(
+    TABLE=t1,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NUME_ORDRE", VALE_I=1)),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_REFE=moment_phys_calcule,
+    VALE_CALC=moment_phys_theorique,
+    PRECISION=0.001,
+)
+
+##########################
+# Verif des combinaisons CQC pour 2 modes
+# acceleration en X uniquement
+##########################
+freq1 = 1.1562763352925387  # valeurs calculees par code_aster
+moment_modal1 = 1.87357e06
+amor1 = 0.04
+acce1 = 5000.0
+pulsation1 = 2 * pi * freq1
+fact_parti_dx1 = 4.082532344968756
+
+moment_phys_theorique1 = fact_parti_dx1 * acce1 * moment_modal1 / pulsation1**2
+moment_phys_calcule1 = 724579779.8436311
+
+freq2 = 7.238547974185564  # valeurs calculees par code_aster
+moment_modal2 = -1.14864e07
+amor2 = 0.04
+acce2 = 5000.0
+pulsation2 = 2 * pi * freq2
+fact_parti_dx2 = -2.2696575797328356
+
+moment_phys_theorique2 = fact_parti_dx2 * acce2 * moment_modal2 / pulsation2**2
+moment_phys_calcule2 = 6.30161e07
+
+
+w12 = (
+    8
+    * sqrt(amor1 * amor2 * pulsation1 * pulsation2)
+    * (amor1 * pulsation1 + amor2 * pulsation2)
+    * pulsation1
+    * pulsation2
+    / (
+        (pulsation1**2 - pulsation2**2) ** 2
+        + 4 * amor1 * amor2 * pulsation1 * pulsation2 * (pulsation1**2 + pulsation2**2)
+        + 4 * (amor1**2 + amor2**2) * pulsation1**2 * pulsation2**2
+    )
+)
+
+moment_total_theorique = sqrt(
+    moment_phys_theorique1**2
+    + moment_phys_theorique2**2
+    + w12 * moment_phys_theorique1 * moment_phys_theorique2
+)
+
+moment_total_calcule = 7.27377e08
+
+EXTR2 = EXTR_MODE(FILTRE_MODE=_F(MODE=MODMECA, NUME_MODE=(1, 2)))
+
+t2 = CALC_COUPURE(
+    FORCE="REAC_NODA",
+    RESULTAT=EXTR2,
+    MODAL_SPECTRAL="OUI",
+    COMB_MODE="CQC",
+    AMOR_REDUIT=csi,
+    # MODE_CORR=MODE_STA,
+    SPEC_OSCI=(SPECT, SPECT, SPECT),
+    ECHELLE=(1, 0, 0),
+    MODE_SIGNE="NON",
+    COMB_DIRECTION="QUAD",
+    COUPURE=(_F(NOM="START", GROUP_MA="ELEMENTS", GROUP_NO="START", POINT=(0, -1500, 0)),),
+)
+
+TEST_TABLE(
+    TABLE=t2,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NUME_ORDRE", VALE_I=1)),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_REFE=moment_total_theorique,
+    VALE_CALC=moment_total_calcule,
+    PRECISION=0.001,
+)
+
+##########################
+# Verif signature
+# acceleration en X uniquement
+##########################
+val_non_signee = [8.33354e04, 0.00000e00, 0.00000e00, 0.00000e00, 3.95114e-02, 7.24580e08]
+signe = [-1, 1, 1, 1, -1, 1]
+
+EXTR3 = EXTR_MODE(FILTRE_MODE=_F(MODE=MODMECA, NUME_MODE=1))
+
+
+t3 = CALC_COUPURE(
+    FORCE="REAC_NODA",
+    RESULTAT=EXTR,
+    MODAL_SPECTRAL="OUI",
+    COMB_MODE="CQC",
+    AMOR_REDUIT=csi,
+    MODE_CORR=MODE_STA,
+    SPEC_OSCI=(SPECT, SPECT, SPECT),
+    ECHELLE=(1, 0, 0),
+    MODE_SIGNE="OUI",
+    COMB_DIRECTION="QUAD",
+    COUPURE=(_F(NOM="START", GROUP_MA="ELEMENTS", GROUP_NO="START", POINT=(0, -1500, 0)),),
+)
+
+
+TEST_TABLE(
+    TABLE=t3,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NUME_ORDRE", VALE_I=1)),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_REFE=val_non_signee[0] * signe[0],
+    VALE_CALC=val_non_signee[0] * signe[0],
+    PRECISION=0.001,
+)
+
+TEST_TABLE(
+    TABLE=t3,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NUME_ORDRE", VALE_I=1)),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="M3",
+    VALE_REFE=val_non_signee[5] * signe[5],
+    VALE_CALC=val_non_signee[5] * signe[5],
+    PRECISION=0.001,
+)
+
+##########################
+# Verif combinaison des directions
+##########################
+# les valeurs de ECHELLE sont pour faire en sorte de rentre la contribution
+# pour R3 du meme ordre de grandeur pour chaque direction
+t4 = CALC_COUPURE(
+    FORCE="REAC_NODA",
+    RESULTAT=MODMECA,
+    MODAL_SPECTRAL="OUI",
+    COMB_MODE="CQC",
+    AMOR_REDUIT=csi,
+    SPEC_OSCI=(SPECT, SPECT, SPECT),
+    ECHELLE=(1, 1, 1),
+    COMB_DIRECTION="QUAD",
+    COUPURE=(_F(NOM="START", GROUP_MA="ELEMENTS", GROUP_NO="START", POINT=(0, -1500, 0)),),
+)
+
+R1X = 8.77140e04
+R1Y = 7.25220e-12
+R1Z = 1.68837e-10
+
+R1Q = sqrt(R1X**2 + R1Y**2 + R1Z**2)
+
+TEST_TABLE(
+    TABLE=t4,
+    FILTRE=(_F(NOM_PARA="NOM", VALE_K="START"), _F(NOM_PARA="NUME_ORDRE", VALE_I=4)),
+    REFERENCE="ANALYTIQUE",
+    NOM_PARA="R1",
+    VALE_REFE=R1Q,
+    VALE_CALC=R1Q,
+)
+
+
+t5 = CALC_COUPURE(
+    FORCE="REAC_NODA",
+    RESULTAT=MODMECA,
+    MODAL_SPECTRAL="OUI",
+    COMB_MODE="CQC",
+    AMOR_REDUIT=csi,
+    SPEC_OSCI=(SPECT, SPECT, SPECT),
+    ECHELLE=(1, 1, 1),
+    COMB_DIRECTION="NEWMARK",
+    COUPURE=(_F(NOM="START", GROUP_MA="ELEMENTS", GROUP_NO="START", POINT=(0, -1500, 0)),),
+)
+
+COMB_NEWMARK = [
+    [1, 0.4, 0.4],
+    [1, -0.4, 0.4],
+    [1, -0.4, -0.4],
+    [1, 0.4, -0.4],
+    [-1, 0.4, 0.4],
+    [-1, -0.4, 0.4],
+    [-1, -0.4, -0.4],
+    [-1, 0.4, -0.4],
+    [0.4, 1, 0.4],
+    [-0.4, 1, 0.4],
+    [-0.4, 1, -0.4],
+    [0.4, 1, -0.4],
+    [0.4, -1, 0.4],
+    [-0.4, -1, 0.4],
+    [-0.4, -1, -0.4],
+    [0.4, -1, -0.4],
+    [0.4, 0.4, 1],
+    [-0.4, 0.4, 1],
+    [-0.4, -0.4, 1],
+    [0.4, -0.4, 1],
+    [0.4, 0.4, -1],
+    [-0.4, 0.4, -1],
+    [-0.4, -0.4, -1],
+    [0.4, -0.4, -1],
+]
+NOM_NEWMARK = [";".join([str(v) for v in comb]) for comb in COMB_NEWMARK]
+
+for nom, comb in zip(NOM_NEWMARK, COMB_NEWMARK):
+    val_ref = comb[0] * R1X + comb[1] * R1Y + comb[2] * R1Z
+    TEST_TABLE(
+        TABLE=t5,
+        FILTRE=(_F(NOM_PARA="DIRECTION", VALE_K=nom)),
+        REFERENCE="ANALYTIQUE",
+        NOM_PARA="R1",
+        VALE_REFE=val_ref,
+        VALE_CALC=val_ref,
+        PRECISION=0.001,
+    )
+
+
+FIN()

@@ -1,0 +1,586 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="OUI"))
+MAIL = LIRE_MAILLAGE(FORMAT="MED", UNITE=20, VERI_MAIL=_F(VERIF="OUI", APLAT=1.0e-3), INFO=2)
+
+
+T0_C = 20.0
+T0_K = T0_C + 273.15
+
+alpha = 9.33427661  # premier coefficient de Van Genuchten [-]
+beta = 0.38923339  # second coefficient de Van Genuchten [-]
+Ad = 10.160105601  # activation thermique de l'isotherme
+K0 = 1.175e-20  # Perméabilité intrinsèque du liquide [m²]
+p = 2.91  # facteur d'interaction porale [-]
+a = 2.607  # premier coefficient de Millington [-]
+b = 7.0  # second coefficient de Millington [-]
+Ea_R = 9918.698  # Energie d'activation [K]'
+poro = 0.161  # porosité moyenne [-]
+
+
+from hsna102f_fonctions import (
+    coefficient_de_diffusion_vapeur,
+    coefficient_de_diffusion,
+    isotherme_hr_T,
+    pression_capillaire,
+)
+
+
+DIFF_R = FORMULE(
+    NOM_PARA=("SECH", "TEMP"),
+    VALE="""coefficient_de_diffusion_vapeur(SECH, poro, alpha, beta, a, b, Ad, T0_K, TEMP)
+                       + coefficient_de_diffusion(SECH, K0, poro, alpha, beta, p, Ad, T0_K, TEMP, Ea_R)""",
+    coefficient_de_diffusion_vapeur=coefficient_de_diffusion_vapeur,
+    coefficient_de_diffusion=coefficient_de_diffusion,
+    K0=K0,
+    poro=poro,
+    alpha=alpha,
+    beta=beta,
+    a=a,
+    b=b,
+    Ad=Ad,
+    p=p,
+    T0_K=T0_K,
+    Ea_R=Ea_R,
+)
+
+
+BETON = DEFI_MATERIAU(
+    SECH_NAPPE=_F(FONCTION=DIFF_R),
+    BETON_DESORP=_F(LEVERETT="OUI", PORO=poro, VG_PR=alpha, VG_N=beta, ATH=Ad, TEMP_0_C=T0_C),
+    SECH_RFT=_F(PERM_IN=K0, QSR_K=Ea_R, A_MIL=a, B_MIL=b, VG_M_P=p),
+    THER=_F(LAMBDA=2.22, RHO_CP=2.400e6),
+)
+
+###################
+# CALCUL THERMIQUE
+###################
+
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MAIL, AFFE=_F(TOUT="OUI", MATER=BETON))
+
+MOTH = AFFE_MODELE(MAILLAGE=MAIL, AFFE=_F(TOUT="OUI", MODELISATION="3D", PHENOMENE="THERMIQUE"))
+T_INT = DEFI_FONCTION(
+    NOM_PARA="INST", VALE=(0, 15, 1.57670e08, 15, 1.57680e08, 35, 1.70294e09, 35)  # 5ans-1j  # 5ans
+)
+T_EXT = DEFI_CONSTANTE(VALE=15)
+HEXT = DEFI_CONSTANTE(VALE=6)
+HINT = DEFI_CONSTANTE(VALE=4)
+CHARTH = AFFE_CHAR_THER_F(
+    MODELE=MOTH,
+    ECHANGE=(
+        _F(GROUP_MA="L_INT", COEF_H=HINT, TEMP_EXT=T_INT),
+        _F(GROUP_MA="L_EXT", COEF_H=HEXT, TEMP_EXT=T_EXT),
+    ),
+)
+LISTTHER = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=3.15360e05, NOMBRE=1),  #   0.1 AN
+        _F(JUSQU_A=3.15360e07, NOMBRE=1),  #   1   AN
+        _F(JUSQU_A=1.57670e08, NOMBRE=4),  #   5 -1  ANS
+        _F(JUSQU_A=1.57680e08, NOMBRE=2),  #   5 ANS
+        _F(JUSQU_A=1.89216e08, NOMBRE=1),  #   6   ANS
+        _F(JUSQU_A=3.15360e08, NOMBRE=4),  #  10   ANS
+        _F(JUSQU_A=4.73040e08, NOMBRE=4),  #  15   ANS
+        _F(JUSQU_A=1.70294e09, NOMBRE=1),
+    ),  #  54   ANS
+)
+
+DEFLISTH = DEFI_LIST_INST(DEFI_LIST=_F(LIST_INST=LISTTHER))
+
+RESUTHER = THER_LINEAIRE(
+    MODELE=MOTH,
+    EXCIT=_F(CHARGE=CHARTH),
+    CHAM_MATER=CHMAT,
+    ETAT_INIT=_F(VALE=15.0),
+    INCREMENT=_F(LIST_INST=DEFLISTH),
+)
+
+
+#####################
+# CALCUL DU SECHAGE
+#####################
+
+CHMATSECH = AFFE_MATERIAU(
+    MAILLAGE=MAIL,
+    AFFE=_F(TOUT="OUI", MATER=BETON),
+    AFFE_VARC=_F(TOUT="OUI", EVOL=RESUTHER, NOM_VARC="TEMP", NOM_CHAM="TEMP", VALE_REF=0.0),
+)
+
+MOSECH = AFFE_MODELE(
+    MAILLAGE=MAIL, AFFE=_F(TOUT="OUI", MODELISATION="3D_SECH", PHENOMENE="THERMIQUE")
+)
+
+# FLUX D HUMIDITE SUR LES PAROIS EXTERNES
+
+BETA = 3.41557e-06
+
+C_0 = 105.7
+C_50 = 57.5
+C_EQ_I05 = 69.1
+
+C_EQ_E05 = 69.1
+
+C_EQ_I10 = 51.6
+
+C_EQ_E10 = 69.1
+
+FL_INT05 = FORMULE(
+    VALE="""(0.5*BETA / ((C_0 - C_50 )**2)
+  * (SECH - (2.*C_0 - C_EQ_I05 ))*(SECH - C_EQ_I05 ))""",
+    BETA=BETA,
+    C_0=C_0,
+    C_50=C_50,
+    C_EQ_I05=C_EQ_I05,
+    NOM_PARA="SECH",
+)
+
+FL_EXT05 = FORMULE(
+    VALE="""(0.5*BETA / ((C_0 - C_50 )**2)
+  * (SECH - (2.*C_0 - C_EQ_E05 ))*(SECH - C_EQ_E05 ))""",
+    BETA=BETA,
+    C_0=C_0,
+    C_50=C_50,
+    C_EQ_E05=C_EQ_E05,
+    NOM_PARA="SECH",
+)
+
+FL_INT10 = FORMULE(
+    VALE="""(0.5*BETA / ((C_0 - C_50 )**2)
+  * (SECH - (2.*C_0 - C_EQ_I10 ))*(SECH - C_EQ_I10 ))""",
+    BETA=BETA,
+    C_0=C_0,
+    C_50=C_50,
+    C_EQ_I10=C_EQ_I10,
+    NOM_PARA="SECH",
+)
+
+FL_EXT10 = FORMULE(
+    VALE="""(0.5*BETA / ((C_0 - C_50 )**2)
+  * (SECH - (2.*C_0 - C_EQ_E10 ))*(SECH - C_EQ_E10 ))""",
+    BETA=BETA,
+    C_0=C_0,
+    C_50=C_50,
+    C_EQ_E10=C_EQ_E10,
+    NOM_PARA="SECH",
+)
+
+LIST0 = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=50.0, PAS=10.0),
+        _F(JUSQU_A=100.0, PAS=2.0),
+        _F(JUSQU_A=110.0, PAS=2.0),
+        _F(JUSQU_A=200.0, PAS=10.0),
+    ),
+)
+
+HU_INT05 = CALC_FONC_INTERP(
+    FONCTION=FL_INT05,
+    LIST_PARA=LIST0,
+    NOM_PARA="SECH",
+    NOM_RESU="FL_INT05",
+    PROL_GAUCHE="LINEAIRE",
+    PROL_DROITE="LINEAIRE",
+    #                                 INTERPOL='INT',
+    INTERPOL="LIN",
+    TITRE="FLUX D HUMIDITE",
+)
+
+HU_EXT05 = CALC_FONC_INTERP(
+    FONCTION=FL_EXT05,
+    LIST_PARA=LIST0,
+    NOM_PARA="SECH",
+    NOM_RESU="FL_EXT05",
+    PROL_GAUCHE="LINEAIRE",
+    PROL_DROITE="LINEAIRE",
+    #                                 INTERPOL='INT',
+    INTERPOL="LIN",
+    TITRE="FLUX D HUMIDITE",
+)
+
+HU_INT10 = CALC_FONC_INTERP(
+    FONCTION=FL_INT10,
+    LIST_PARA=LIST0,
+    NOM_PARA="SECH",
+    NOM_RESU="FL_INT10",
+    PROL_GAUCHE="LINEAIRE",
+    PROL_DROITE="LINEAIRE",
+    #                                 INTERPOL='INT',
+    INTERPOL="LIN",
+    TITRE="FLUX D HUMIDITE",
+)
+
+HU_EXT10 = CALC_FONC_INTERP(
+    FONCTION=FL_EXT10,
+    LIST_PARA=LIST0,
+    NOM_PARA="SECH",
+    NOM_RESU="FL_EXT10",
+    PROL_GAUCHE="LINEAIRE",
+    PROL_DROITE="LINEAIRE",
+    #                                 INTERPOL='INT',
+    INTERPOL="LIN",
+    TITRE="FLUX D HUMIDITE",
+)
+
+CHARSE05 = AFFE_CHAR_SECH_F(
+    MODELE=MOSECH,
+    FLUX_NL=(_F(GROUP_MA="L_INT", FLUN=HU_INT05), _F(GROUP_MA="L_EXT", FLUN=HU_EXT05)),
+)
+
+CHARSE10 = AFFE_CHAR_SECH_F(
+    MODELE=MOSECH,
+    FLUX_NL=(_F(GROUP_MA="L_INT", FLUN=HU_INT10), _F(GROUP_MA="L_EXT", FLUN=HU_EXT10)),
+)
+
+
+LISTSECH = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=3.15360e04, NOMBRE=1),  #   0.001 A
+        _F(JUSQU_A=3.15360e06, NOMBRE=10),  #   0.1 AN
+        _F(JUSQU_A=3.15360e07, NOMBRE=9),  #   1   AN
+        _F(JUSQU_A=1.50000e08, NOMBRE=16),  #   4.9 ANS
+        _F(JUSQU_A=1.57680e08, NOMBRE=16),  #   5   ANS
+        _F(JUSQU_A=1.57712e08, NOMBRE=1),  #   5.001 A
+        _F(JUSQU_A=1.60834e08, NOMBRE=4),  #   5.1 ANS
+        _F(JUSQU_A=1.89216e08, NOMBRE=9),  #   6   ANS
+        _F(JUSQU_A=3.15360e08, NOMBRE=8),  #  10   ANS
+        _F(JUSQU_A=4.73040e08, NOMBRE=10),  #  15   ANS
+        _F(JUSQU_A=1.57680e09, NOMBRE=70),  #  50   ANS
+        _F(JUSQU_A=1.70294e09, NOMBRE=8),
+    ),  #  54   ANS
+)
+
+DEFLISTS = DEFI_LIST_INST(DEFI_LIST=_F(LIST_INST=LISTSECH))
+
+
+RESUSECH = SECH_NON_LINE(
+    MODELE=MOSECH,
+    EXCIT=_F(CHARGE=CHARSE05),
+    CHAM_MATER=CHMATSECH,
+    ETAT_INIT=_F(VALE=105.7),
+    INCREMENT=_F(LIST_INST=DEFLISTS, INST_FIN=1.57680e08),
+    COMPORTEMENT=_F(RELATION="SECH_RFT", TOUT="OUI"),
+    CONVERGENCE=_F(ITER_GLOB_MAXI=20),
+    TITRE=("CAS TEST SECH_NON_LINE",),
+)
+
+RESUSECH = SECH_NON_LINE(
+    reuse=RESUSECH,
+    MODELE=MOSECH,
+    EXCIT=_F(CHARGE=CHARSE10),
+    CHAM_MATER=CHMATSECH,
+    ETAT_INIT=_F(EVOL_SECH=RESUSECH, INST=1.57680e08),
+    INCREMENT=_F(LIST_INST=DEFLISTS, INST_INIT=1.57680e08),
+    COMPORTEMENT=_F(RELATION="SECH_RFT", TOUT="OUI"),
+    CONVERGENCE=_F(ITER_GLOB_MAXI=20),
+    TITRE=("CAS TEST SECH_NON_LINE",),
+)
+
+CALC_CHAMP(
+    reuse=RESUSECH,
+    RESULTAT=RESUSECH,
+    SECHAGE=("DIFF_ELGA", "DIFF_ELNO", "DIFF_NOEU", "HYGR_ELGA", "HYGR_ELNO", "HYGR_NOEU"),
+    TOUT_ORDRE="OUI",
+)
+
+
+##############################
+# TESTS DES RESULTATS
+##############################
+
+LISTSEC2 = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=1.57680e08, NOMBRE=1),  #   5   ANS
+        _F(JUSQU_A=4.73040e08, NOMBRE=1),  #  15   ANS
+        _F(JUSQU_A=1.70294e09, NOMBRE=1),
+    ),  #  54   ANS
+)
+
+COUP = MACR_LIGN_COUPE(
+    RESULTAT=RESUSECH,
+    LIST_INST=LISTSEC2,
+    NOM_CHAM="SECH",
+    LIGN_COUPE=_F(NOM_CMP=("SECH"), TYPE="GROUP_MA", MAILLAGE=MAIL, GROUP_MA="RGENEF"),
+)
+
+
+IMPR_TABLE(
+    UNITE=6,
+    TABLE=COUP,
+    FORMAT="TABLEAU_CROISE",
+    FORMAT_R="F3.12",
+    NOM_PARA=("INST", "COOR_X", "SECH"),
+)
+# -----------------------------------------------------
+# Tests
+# -----------------------------------------------------
+C_ref = [
+    [69.201017729244, 51.664982719645, 51.633165483417],
+    [93.249075744582, 80.810555650854, 69.336525302113],
+    [102.039811297135, 93.540270051284, 83.699846090435],
+    [105.488158259579, 100.596686175951, 92.306555764000],
+    [105.770737378769, 104.518894867778, 98.229662369822],
+    [105.666068528874, 105.779175551850, 101.350238103744],
+    [105.771566071298, 104.996931773944, 100.017583754391],
+    [105.487056206796, 102.013322412505, 95.777401831958],
+    [102.026143892663, 96.368664320438, 89.631211808979],
+    [93.230166848461, 87.216231312368, 81.373828370462],
+    [69.193106562839, 69.167905182842, 69.141697145981],
+]
+# valeurs de non-regression DNSXI,DNSXS,DNSYI,DNSYS
+C_reg = [
+    [69.19723223090853, 51.66488402487649, 51.633141224284614],
+    [93.25324070105772, 80.80631981753149, 69.32251967656435],
+    [102.04015862452097, 93.52229291213932, 83.6899432199817],
+    [105.4882597860954, 100.58693789865931, 92.29878962345826],
+    [105.77071959050402, 104.51445366213082, 98.22353007667287],
+    [105.66607307476079, 105.77883037249204, 101.34600744169721],
+    [105.77156244093112, 104.99649736823662, 100.0148426428744],
+    [105.48707614137508, 102.0117397196549, 95.77544817526065],
+    [102.0261699817233, 96.36637001476016, 89.62974841275137],
+    [93.23024574269922, 87.21384001836641, 81.37281642196795],
+    [69.19288927273662, 69.16787836258139, 69.14169388146547],
+]
+x_test = [22.5, 22.5382, 22.5954, 22.6809, 22.8088, 23, 23.1912, 23.3191, 23.4046, 23.4618, 23.5]
+inst_test = [1.57680e08, 4.73040e08, 1.70294e09]
+for j, t in enumerate(inst_test):
+    for i, x in enumerate(x_test):
+
+        TEST_TABLE(
+            REFERENCE="AUTRE_ASTER",
+            PRECISION=0.05,
+            VALE_CALC=C_reg[i][j],
+            VALE_REFE=C_ref[i][j],
+            NOM_PARA="SECH",
+            TABLE=COUP,
+            FILTRE=(_F(NOM_PARA="COOR_X", VALE=x), _F(NOM_PARA="INST", VALE=t)),
+        )
+
+# VALIDATION DES OPTIONS DIFF_**** et HYGR_****
+
+
+TEMP_NOEU = CREA_CHAMP(
+    TYPE_CHAM="NOEU_TEMP_R", OPERATION="EXTR", RESULTAT=RESUTHER, NOM_CHAM="TEMP", INST=1.70294e09
+)
+
+TEMP_ELGA = CREA_CHAMP(OPERATION="DISC", TYPE_CHAM="ELGA_TEMP_R", MODELE=MOTH, CHAM_GD=TEMP_NOEU)
+
+SECH_NOEU = CREA_CHAMP(
+    TYPE_CHAM="NOEU_TEMP_R", OPERATION="EXTR", RESULTAT=RESUSECH, NOM_CHAM="SECH", INST=1.70294e09
+)
+
+SECH_ELGA = CREA_CHAMP(OPERATION="DISC", TYPE_CHAM="ELGA_TEMP_R", MODELE=MOSECH, CHAM_GD=SECH_NOEU)
+
+
+temptest = 26.397513416641374
+sechtest = 93.55083460229133
+
+TEST_RESU(
+    CHAM_ELEM=(
+        _F(GROUP_MA="GRMATEST", POINT=1, NOM_CMP="SECH", VALE_CALC=sechtest, CHAM_GD=SECH_ELGA),
+        _F(GROUP_MA="GRMATEST", POINT=1, NOM_CMP="TEMP", VALE_CALC=temptest, CHAM_GD=TEMP_ELGA),
+    )
+)
+
+
+diff_liqu_ref = coefficient_de_diffusion(
+    sechtest, K0, poro, alpha, beta, p, Ad, T0_K, temptest, Ea_R
+)
+diff_vap_ref = coefficient_de_diffusion_vapeur(
+    sechtest, poro, alpha, beta, a, b, Ad, T0_K, temptest
+)
+diffref = diff_liqu_ref + diff_vap_ref
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_MA="GRMATEST",
+            POINT=1,
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="DIFF_ELGA",
+            NOM_CMP="DIFT",
+            VALE_CALC=diffref,
+            VALE_REFE=diffref,
+            PRECISION=1.0e-2,
+        ),
+        _F(
+            GROUP_MA="GRMATEST",
+            POINT=1,
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="DIFF_ELGA",
+            NOM_CMP="DIFL",
+            VALE_CALC=diff_liqu_ref,
+            VALE_REFE=diff_liqu_ref,
+            PRECISION=1.0e-2,
+        ),
+        _F(
+            GROUP_MA="GRMATEST",
+            POINT=1,
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="DIFF_ELGA",
+            NOM_CMP="DIFV",
+            VALE_CALC=diff_vap_ref,
+            VALE_REFE=diff_vap_ref,
+            PRECISION=1.0e-2,
+        ),
+    )
+)
+
+humidite_rel_ref = isotherme_hr_T(sechtest, alpha, beta, Ad, T0_K, poro, temptest + 273.15)
+pression_cap_ref = pression_capillaire(sechtest, alpha, beta, Ad, T0_K, poro, temptest + 273.15)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_MA="GRMATEST",
+            POINT=1,
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="HYGR_ELGA",
+            NOM_CMP="HUMR",
+            VALE_CALC=humidite_rel_ref,
+            VALE_REFE=humidite_rel_ref,
+            PRECISION=1.0e-2,
+        ),
+        _F(
+            GROUP_MA="GRMATEST",
+            POINT=1,
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="HYGR_ELGA",
+            NOM_CMP="PCAP",
+            VALE_CALC=pression_cap_ref,
+            VALE_REFE=pression_cap_ref,
+            PRECISION=1.0e-2,
+        ),
+    )
+)
+
+temptest = 26.663182208364347
+sechtest = 92.29878962345427
+diff_liqu_ref = coefficient_de_diffusion(
+    sechtest, K0, poro, alpha, beta, p, Ad, T0_K, temptest, Ea_R
+)
+diff_vap_ref = coefficient_de_diffusion_vapeur(
+    sechtest, poro, alpha, beta, a, b, Ad, T0_K, temptest
+)
+diffref = diff_liqu_ref + diff_vap_ref
+humidite_rel_ref = isotherme_hr_T(sechtest, alpha, beta, Ad, T0_K, poro, temptest + 273.15)
+pression_cap_ref = pression_capillaire(sechtest, alpha, beta, Ad, T0_K, poro, temptest + 273.15)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            RESULTAT=RESUSECH,
+            NOM_CHAM="SECH",
+            NOM_CMP="SECH",
+            VALE_CALC=sechtest,
+        ),
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            RESULTAT=RESUTHER,
+            NOM_CHAM="TEMP",
+            NOM_CMP="TEMP",
+            VALE_CALC=temptest,
+        ),
+    )
+)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="DIFF_NOEU",
+            NOM_CMP="DIFT",
+            VALE_CALC=2.0613286655193766e-11,
+            VALE_REFE=diffref,
+            PRECISION=1.5e-2,
+        ),
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="DIFF_NOEU",
+            NOM_CMP="DIFL",
+            VALE_CALC=2.0554781183012996e-11,
+            VALE_REFE=diff_liqu_ref,
+            PRECISION=1.5e-2,
+        ),
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="DIFF_NOEU",
+            NOM_CMP="DIFV",
+            VALE_CALC=5.850547218077577e-14,
+            VALE_REFE=diff_vap_ref,
+            PRECISION=0.1,
+        ),
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="HYGR_NOEU",
+            NOM_CMP="HUMR",
+            VALE_CALC=0.8302958152438619,
+            VALE_REFE=humidite_rel_ref,
+            PRECISION=4e-2,
+        ),
+        _F(
+            GROUP_NO="GRNOTEST",
+            INST=1.70294e09,
+            REFERENCE="ANALYTIQUE",
+            RESULTAT=RESUSECH,
+            NOM_CHAM="HYGR_NOEU",
+            NOM_CMP="PCAP",
+            VALE_CALC=-25640944.66029245,
+            VALE_REFE=pression_cap_ref,
+            PRECISION=2.2e-1,
+        ),
+    )
+)
+
+
+FIN()

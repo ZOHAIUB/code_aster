@@ -1,0 +1,547 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="ALARME"), DEBUG=_F(SDVERI="OUI"))
+
+MA = LIRE_MAILLAGE(FORMAT="ASTER")
+
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="3D"))
+
+CH0 = AFFE_CHAR_MECA(
+    INFO=2,
+    MODELE=MO,
+    DDL_IMPO=(
+        _F(GROUP_NO=("A",), DZ=0.0),
+        _F(GROUP_NO=("A", "A2"), DX=0.0, DY=0.0),
+        _F(GROUP_NO=("D", "D2"), DX=0.0),
+    ),
+    FORCE_NODALE=_F(GROUP_NO=("F", "F2"), FY=2.0),
+)
+
+MAT = DEFI_MATERIAU(ELAS=_F(E=10.0, NU=0.0))
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MAT))
+
+# ======================================================
+# 1- CAS DE CHARGE 1 :  ON RELIE TOUT LE DEPLACEMENT
+# ======================================================
+
+# 1-1 AVEC LIAISON_DDL :
+# --------------------
+
+CH11 = AFFE_CHAR_MECA(
+    INFO=2,
+    MODELE=MO,
+    LIAISON_DDL=(
+        _F(
+            GROUP_NO=("E", "D", "C"),
+            DDL=("DX", "DY", "DY"),
+            COEF_MULT=(1.0, -0.5, -0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E", "D", "C"),
+            DDL=("DY", "DX", "DX"),
+            COEF_MULT=(1.0, 0.5, 0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E", "D", "C"),
+            DDL=("DZ", "DZ", "DZ"),
+            COEF_MULT=(1.0, -0.5, -0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E2", "D2", "C2"),
+            DDL=("DX", "DY", "DY"),
+            COEF_MULT=(1.0, -0.5, -0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E2", "D2", "C2"),
+            DDL=("DY", "DX", "DX"),
+            COEF_MULT=(1.0, 0.5, 0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E2", "D2", "C2"),
+            DDL=("DZ", "DZ", "DZ"),
+            COEF_MULT=(1.0, -0.5, -0.5),
+            COEF_IMPO=0.0,
+        ),
+    ),
+)
+
+MEST11 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMAT, EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH11)))
+
+# 1-2 AVEC LIAISON_MAIL :
+# --------------------
+
+CH12 = AFFE_CHAR_MECA(
+    MODELE=MO,
+    INFO=2,
+    LIAISON_MAIL=_F(
+        GROUP_MA_MAIT=("Q1", "Q2"),
+        GROUP_NO_ESCL=("E", "E2"),
+        DISTANCE_MAX=1.0e-6,
+        TRAN=(-5.0, 0.0, 0.0),
+        CENTRE=(10.0, 0.0, 0.0),
+        ANGL_NAUT=(90.0, 0.0, 0.0),
+    ),
+)
+
+MEST12 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMAT, EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH12)))
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=MEST11,
+            NOM_CHAM="DEPL",
+            GROUP_NO="F",
+            NOM_CMP="DY",
+            VALE_CALC=1.4153582447719999,
+        ),
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST12,
+            NOM_CHAM="DEPL",
+            GROUP_NO="F",
+            NOM_CMP="DY",
+            VALE_CALC=1.4153582447720,
+            VALE_REFE=1.4153582447719999,
+            PRECISION=1.0e-12,
+        ),
+    )
+)
+
+# =============================================================
+# 2- CAS DE CHARGE 2 :  ON NE RELIE QUE LE DEPLACEMENT NORMAL
+# ==============================================================
+
+# 2-1 AVEC LIAISON_DDL :
+# --------------------
+
+CH21 = AFFE_CHAR_MECA(
+    INFO=2,
+    MODELE=MO,
+    LIAISON_DDL=(
+        _F(
+            GROUP_NO=("E", "D", "C"),
+            DDL=("DY", "DY", "DY"),
+            COEF_MULT=(1.0, 0.5, 0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("B", "C", "F"),
+            DDL=("DY", "DY", "DY"),
+            COEF_MULT=(1.0, 0.5, 0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E2", "D2", "C2"),
+            DDL=("DY", "DY", "DY"),
+            COEF_MULT=(1.0, 0.5, 0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("B2", "C2", "F2"),
+            DDL=("DY", "DY", "DY"),
+            COEF_MULT=(1.0, 0.5, 0.5),
+            COEF_IMPO=0.0,
+        ),
+    ),
+)
+
+MEST21 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMAT, EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH21)))
+
+# 2-2 AVEC LIAISON_MAIL :
+# --------------------
+
+CH22 = AFFE_CHAR_MECA(
+    INFO=2,
+    MODELE=MO,
+    LIAISON_MAIL=_F(
+        GROUP_MA_MAIT=("Q1", "Q2"),
+        GROUP_MA_ESCL="S1",
+        DISTANCE_MAX=1.0e-6,
+        TRAN=(5.0, 10.0, 0.0),
+        CENTRE=(10.0, 0.0, 0.0),
+        ANGL_NAUT=(180.0, 0.0, 0.0),
+        DDL="DNOR",
+        ELIM_MULT="NON",
+    ),
+)
+
+MEST22 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMAT, EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH22)))
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=MEST21,
+            NOM_CHAM="DEPL",
+            GROUP_NO="F",
+            NOM_CMP="DY",
+            VALE_CALC=1.0561898652982999,
+        ),
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST22,
+            NOM_CHAM="DEPL",
+            GROUP_NO="F",
+            NOM_CMP="DY",
+            VALE_CALC=1.0561898652983,
+            VALE_REFE=1.0561898652982999,
+            PRECISION=1.0e-12,
+        ),
+    )
+)
+
+# ======================================================
+# 3- CAS DE CHARGE 3 :  ON RELIE LA TEMPERATURE
+
+# ======================================================
+
+
+DETRUIRE(NOM=MO)
+
+DETRUIRE(NOM=CH0)
+
+DETRUIRE(NOM=MAT)
+
+DETRUIRE(NOM=CHMAT)
+
+DETRUIRE(NOM=CH11)
+
+DETRUIRE(NOM=MEST11)
+
+DETRUIRE(NOM=CH12)
+
+DETRUIRE(NOM=MEST12)
+
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="THERMIQUE", MODELISATION="3D"))
+
+CH0 = AFFE_CHAR_THER(
+    INFO=2,
+    MODELE=MO,
+    TEMP_IMPO=(_F(GROUP_NO=("A", "A2"), TEMP=0.0), _F(GROUP_NO=("D", "D2"), TEMP=4.0)),
+)
+
+MAT = DEFI_MATERIAU(THER=_F(LAMBDA=10.0))
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MAT))
+
+# 3-1 AVEC LIAISON_DDL :
+
+# --------------------
+
+CH11 = AFFE_CHAR_THER(
+    INFO=2,
+    MODELE=MO,
+    LIAISON_DDL=(
+        _F(
+            GROUP_NO=("E", "D", "C"),
+            DDL=("TEMP", "TEMP", "TEMP"),
+            COEF_MULT=(1.0, -0.5, -0.5),
+            COEF_IMPO=0.0,
+        ),
+        _F(
+            GROUP_NO=("E2", "D2", "C2"),
+            DDL=("TEMP", "TEMP", "TEMP"),
+            COEF_MULT=(1.0, -0.5, -0.5),
+            COEF_IMPO=0.0,
+        ),
+    ),
+)
+
+MEST11 = THER_LINEAIRE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH11)),
+    TYPE_CALCUL="STAT",
+    INCREMENT=_F(LIST_INST=DEFI_LIST_REEL(VALE=0.0)),
+)
+
+# 3-2 AVEC LIAISON_MAIL :
+
+# --------------------
+
+CH12 = AFFE_CHAR_THER(
+    MODELE=MO,
+    INFO=2,
+    LIAISON_MAIL=_F(
+        GROUP_MA_MAIT=("Q1", "Q2"),
+        GROUP_NO_ESCL=("E", "E2"),
+        DISTANCE_MAX=1.0e-6,
+        TRAN=(-5.0, 0.0, 0.0),
+        CENTRE=(10.0, 0.0, 0.0),
+        ANGL_NAUT=(90.0, 0.0, 0.0),
+    ),
+)
+
+MEST12 = THER_LINEAIRE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH12)),
+    TYPE_CALCUL="STAT",
+    INCREMENT=_F(LIST_INST=DEFI_LIST_REEL(VALE=0.0)),
+)
+
+
+# 3-3 AVEC LIAISON_CHAMNO :
+
+# --------------------
+
+
+CH1 = CREA_CHAMP(
+    MAILLAGE=MA,
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_TEMP_R",
+    AFFE=(
+        _F(GROUP_NO="E", NOM_CMP=("TEMP",), VALE=(1.0)),
+        _F(GROUP_NO="D", NOM_CMP=("TEMP",), VALE=(-0.5)),
+        _F(GROUP_NO="C", NOM_CMP=("TEMP",), VALE=(-0.5)),
+    ),
+)
+
+
+CH2 = CREA_CHAMP(
+    MAILLAGE=MA,
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_TEMP_R",
+    AFFE=(
+        _F(GROUP_NO="E2", NOM_CMP=("TEMP",), VALE=(1.0)),
+        _F(GROUP_NO="D2", NOM_CMP=("TEMP",), VALE=(-0.5)),
+        _F(GROUP_NO="C2", NOM_CMP=("TEMP",), VALE=(-0.5)),
+    ),
+)
+
+
+CH13A = AFFE_CHAR_THER(INFO=1, MODELE=MO, LIAISON_CHAMNO=(_F(CHAM_NO=CH1, COEF_IMPO=0),))
+
+CH13B = AFFE_CHAR_THER(INFO=1, MODELE=MO, LIAISON_CHAMNO=(_F(CHAM_NO=CH2, COEF_IMPO=0),))
+MEST13 = THER_LINEAIRE(
+    MODELE=MO,
+    CHAM_MATER=CHMAT,
+    EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH13A), _F(CHARGE=CH13B)),
+    TYPE_CALCUL="STAT",
+    INCREMENT=_F(LIST_INST=DEFI_LIST_REEL(VALE=0.0)),
+)
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=MEST11,
+            NOM_CHAM="TEMP",
+            GROUP_NO="F",
+            NOM_CMP="TEMP",
+            VALE_CALC=2.5,
+        ),
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST12,
+            NOM_CHAM="TEMP",
+            GROUP_NO="F",
+            NOM_CMP="TEMP",
+            VALE_CALC=2.5000000000000,
+            VALE_REFE=2.5,
+            PRECISION=1.0e-12,
+        ),
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST13,
+            NOM_CHAM="TEMP",
+            GROUP_NO="F",
+            NOM_CMP="TEMP",
+            VALE_CALC=2.5000000000000,
+            VALE_REFE=2.5,
+            PRECISION=1.0e-12,
+        ),
+    )
+)
+
+# 1-2 AVEC LIAISON_MAIL : pour Tester TAUTOLOGIE EN MASSIF
+# -------------------
+
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="3D"))
+
+MAT = DEFI_MATERIAU(ELAS=_F(E=10.0, NU=0.0))
+
+CHMAT = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MAT))
+
+CH12T = AFFE_CHAR_MECA(
+    MODELE=MO,
+    LIAISON_MAIL=_F(GROUP_MA_MAIT=("Q1", "Q2"), GROUP_NO_ESCL=("E", "E2"), DISTANCE_MAX=1.0e-6),
+)
+
+CH0 = AFFE_CHAR_MECA(
+    MODELE=MO,
+    DDL_IMPO=(
+        _F(GROUP_NO=("A",), DZ=0.0),
+        _F(GROUP_NO=("A", "A2"), DX=0.0, DY=0.0),
+        _F(GROUP_NO=("D", "D2"), DX=0.0),
+    ),
+    FORCE_NODALE=_F(GROUP_NO=("F", "F2"), FY=2.0),
+)
+
+
+MEST12T = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMAT, EXCIT=(_F(CHARGE=CH0), _F(CHARGE=CH12T)))
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST12T,
+            NOM_CHAM="DEPL",
+            GROUP_NO="F",
+            NOM_CMP="DY",
+            VALE_CALC=10.199999999999996,
+            VALE_REFE=10.199999999999996,
+            PRECISION=1.0e-12,
+        ),
+    )
+)
+
+# Test TAUTOLOGIE COQUE_MASSIF
+MO_CM = AFFE_MODELE(
+    MAILLAGE=MA,
+    AFFE=(
+        _F(GROUP_MA="Q1", PHENOMENE="MECANIQUE", MODELISATION="3D"),
+        _F(GROUP_MA="S1", PHENOMENE="MECANIQUE", MODELISATION="DKT"),
+    ),
+)
+
+CHNOR = CREA_CHAMP(
+    TYPE_CHAM="NOEU_GEOM_R", OPERATION="NORMALE", MODELE=MO_CM, GROUP_MA="S1", INFO=1
+)
+
+CH_CM = AFFE_CHAR_MECA(
+    MODELE=MO_CM,
+    LIAISON_MAIL=_F(
+        GROUP_MA_MAIT=("Q1"),
+        GROUP_MA_ESCL=("S1"),
+        TYPE_RACCORD="COQUE_MASSIF",
+        EPAIS=0.5,
+        CHAM_NORMALE=CHNOR,
+        DISTANCE_MAX=1.0e-6,
+    ),
+)
+
+CH0_CM = AFFE_CHAR_MECA(
+    MODELE=MO_CM,
+    DDL_IMPO=(
+        _F(GROUP_NO=("A",), DZ=0.0),
+        _F(GROUP_NO=("A", "A2"), DX=0.0, DY=0.0),
+        _F(GROUP_NO=("D", "D2"), DX=0.0),
+    ),
+    FORCE_NODALE=_F(GROUP_NO=("E", "E2"), FX=2.0),
+)
+
+CARELEM = AFFE_CARA_ELEM(
+    MODELE=MO_CM, COQUE=_F(GROUP_MA="S1", COQUE_NCOU=1, EPAIS=0.5, ANGL_REP=(0.0, 0.0))
+)
+
+
+MEST_CM = MECA_STATIQUE(
+    MODELE=MO_CM, CHAM_MATER=CHMAT, CARA_ELEM=CARELEM, EXCIT=(_F(CHARGE=CH_CM), _F(CHARGE=CH0_CM))
+)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST_CM,
+            NOM_CHAM="DEPL",
+            GROUP_NO="E",
+            NOM_CMP="DX",
+            VALE_CALC=9.200000000000058,
+            VALE_REFE=9.200000000000058,
+            PRECISION=1.0e-12,
+        ),
+    )
+)
+
+# Test TAUTOLOGIE MASSIF_COQUE
+MO_CM = AFFE_MODELE(
+    MAILLAGE=MA,
+    AFFE=(
+        _F(GROUP_MA="Q1", PHENOMENE="MECANIQUE", MODELISATION="3D"),
+        _F(GROUP_MA="S1", PHENOMENE="MECANIQUE", MODELISATION="DKT"),
+    ),
+)
+
+CHNOR = CREA_CHAMP(
+    TYPE_CHAM="NOEU_GEOM_R", OPERATION="NORMALE", MODELE=MO_CM, GROUP_MA="S1", INFO=1
+)
+
+CH_MC = AFFE_CHAR_MECA(
+    MODELE=MO_CM,
+    LIAISON_MAIL=_F(
+        GROUP_MA_MAIT=("S1"), GROUP_MA_ESCL=("Q1"), TYPE_RACCORD="MASSIF_COQUE", DISTANCE_MAX=1.0e-6
+    ),
+)
+
+CH0_CM = AFFE_CHAR_MECA(
+    MODELE=MO_CM,
+    DDL_IMPO=(
+        _F(GROUP_NO=("A",), DZ=0.0),
+        _F(GROUP_NO=("A", "A2"), DX=0.0, DY=0.0),
+        _F(GROUP_NO=("D", "D2"), DX=0.0),
+        _F(GROUP_NO=("E", "E2"), DRZ=0.0),
+    ),
+    FORCE_NODALE=_F(GROUP_NO=("E", "E2"), FX=2.0),
+)
+
+CARELEM = AFFE_CARA_ELEM(
+    MODELE=MO_CM, COQUE=_F(GROUP_MA="S1", COQUE_NCOU=1, EPAIS=0.5, ANGL_REP=(0.0, 0.0))
+)
+
+
+MEST_MC = MECA_STATIQUE(
+    MODELE=MO_CM, CHAM_MATER=CHMAT, CARA_ELEM=CARELEM, EXCIT=(_F(CHARGE=CH_MC), _F(CHARGE=CH0_CM))
+)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=MEST_MC,
+            NOM_CHAM="DEPL",
+            GROUP_NO="E",
+            NOM_CMP="DX",
+            VALE_CALC=9.200000000000058,
+            VALE_REFE=9.200000000000058,
+            PRECISION=1.0e-12,
+        ),
+    )
+)
+
+FIN()
+#

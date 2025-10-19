@@ -1,0 +1,32 @@
+# created by waf using data/wscript
+
+# to avoid recursive calls
+if [ ! -z "${ASTER_PROFILE_LOADED}" ]; then
+    return
+fi
+
+# RUNASTER_ROOT is usually set by run_aster
+: ${RUNASTER_ROOT:=@PREFIX@}
+
+@BUILD_ENV@
+
+@CONFIG_ENV@
+
+export LD_LIBRARY_PATH=${RUNASTER_ROOT}/@RELATIVE_LIBDIR@:${LD_LIBRARY_PATH}:.
+
+export PYTHONPATH=${RUNASTER_ROOT}/@RELATIVE_LIBDIR@:${PYTHONPATH}:.
+
+# Better to set PATH rather PYTHONHOME - more stable
+# PYTHONHOME will be deduced from python executable location
+export PATH=@PYTHON_DIRNAME@:${PATH}
+
+export ASTER_LIBDIR=${RUNASTER_ROOT}/@RELATIVE_LIBDIR@
+
+export ASTER_DATADIR=${RUNASTER_ROOT}/@RELATIVE_DATADIR@
+
+export ASTER_LOCALEDIR=${RUNASTER_ROOT}/@RELATIVE_LOCALEDIR@
+
+export ASTER_ELEMENTSDIR=${RUNASTER_ROOT}/@RELATIVE_LIBDIR@
+
+# to avoid recursive calls
+export ASTER_PROFILE_LOADED=1

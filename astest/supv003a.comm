@@ -1,0 +1,55 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: mathieu.courtois at edf.fr
+import os.path as osp
+
+from code_aster.Cata.Syntax import tr
+from code_aster.Commands import *
+from code_aster.Utilities import localization
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), LANG="EN")
+
+# si le dictionnaire anglais n'est pas disponible, on ne peut pas faire le test
+mofile = osp.join(localization.localedir, "en-US", "LC_MESSAGES", "aster_messages.mo")
+
+translation = tr("On attend un objet concept.")
+isok = translation == "A concept object is expected." or not osp.isfile(mofile)
+
+
+tab2 = CREA_TABLE(LISTE=(_F(PARA="BOOL", LISTE_I=int(isok)),))
+TEST_TABLE(
+    CRITERE="ABSOLU",
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC_I=1,
+    VALE_REFE_I=1,
+    PRECISION=0,
+    NOM_PARA="BOOL",
+    TABLE=tab2,
+)
+
+# Check catalog version
+from code_aster.Cata import aster_version
+
+assert type(aster_version.VERSION_MAJOR) is int, aster_version.VERSION_MAJOR
+assert type(aster_version.VERSION_MINOR) is int, aster_version.VERSION_MINOR
+assert type(aster_version.VERSION_PATCH) is int, aster_version.VERSION_PATCH
+assert type(aster_version.VERSION_STR) is str, aster_version.VERSION_STR
+
+FIN()

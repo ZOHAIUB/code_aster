@@ -1,0 +1,172 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+from code_aster.Commands import *
+from code_aster import CA
+from code_aster.MacroCommands.defi_cont import DEFI_CONT
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"), INFO=1)
+
+test = CA.TestCase()
+
+mesh = LIRE_MAILLAGE(UNITE=20, FORMAT="MED")
+
+mesh = MODI_MAILLAGE(
+    reuse=mesh,
+    MAILLAGE=mesh,
+    ORIE_PEAU=_F(GROUP_MA_PEAU=("Group_2", "Group_1", "Group_3", "Group_4")),
+)
+
+meshFalse = LIRE_MAILLAGE(UNITE=25, FORMAT="MED")
+
+meshFalse = MODI_MAILLAGE(
+    reuse=meshFalse, MAILLAGE=meshFalse, ORIE_PEAU=_F(GROUP_MA_PEAU=("Group_2", "Group_1"))
+)
+
+
+model = AFFE_MODELE(
+    MAILLAGE=mesh, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="D_PLAN")
+)
+
+modelFalse = AFFE_MODELE(
+    MAILLAGE=meshFalse, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="D_PLAN")
+)
+
+mat1 = DEFI_MATERIAU(ELAS=_F(E=2000, NU=0.3))
+
+materialField = AFFE_MATERIAU(MAILLAGE=mesh, AFFE=_F(TOUT="OUI", MATER=mat1))
+
+materialFieldFalse = AFFE_MATERIAU(MAILLAGE=meshFalse, AFFE=_F(TOUT="OUI", MATER=mat1))
+
+symBC = AFFE_CHAR_CINE(
+    MODELE=model, MECA_IMPO=(_F(GROUP_MA="Sym", DX=0), _F(GROUP_MA="Group_3", DY=0))
+)
+pressure = AFFE_CHAR_MECA(MODELE=model, PRES_REP=_F(GROUP_MA="Group_4", PRES=25))
+
+realList = DEFI_LIST_REEL(DEBUT=0, INTERVALLE=_F(JUSQU_A=1, PAS=0.5))
+
+LINST = DEFI_LIST_INST(
+    DEFI_LIST=_F(LIST_INST=realList), ECHEC=_F(EVENEMENT="ERREUR", ACTION="DECOUPE")
+)
+
+unitRamp = DEFI_FONCTION(NOM_PARA="INST", VALE=(0, 0, 1, 1))
+
+vari_cont = [
+    {"SYME": "NON", "VARIANTE": "RAPIDE"},
+    {"SYME": "OUI"},
+    {"SYME": "NON", "VARIANTE": "ROBUSTE"},
+]
+
+# Check volumic cells under skin
+is_ok = 0
+try:
+    DEFICO = DEFI_CONT(
+        MODELE=modelFalse,
+        ZONE=_F(
+            APPARIEMENT="MORTAR",
+            GROUP_MA_MAIT="Group_2",
+            GROUP_MA_ESCL="Group_1",
+            ALGO_CONT="NITSCHE",
+            COEF_CONT=2000.0,
+            CONTACT_INIT="INTERPENETRE",
+            VERI_NORM="NON",
+        ),
+    )
+    nonLineResu = MECA_NON_LINE(
+        MODELE=modelFalse,
+        CHAM_MATER=materialFieldFalse,
+        CONTACT=_F(DEFINITION=DEFICO, ALGO_RESO_GEOM="NEWTON"),
+        INCREMENT=_F(LIST_INST=realList),
+        # COMPORTEMENT=_F(RELATION="ELAS", DEFORMATION="PETIT", TOUT="OUI"),
+        # SOLVEUR=_F(METHODE="MUMPS", RESI_RELA=1.0e-6, PCENT_PIVOT=30),
+        # CONVERGENCE=_F(RESI_GLOB_MAXI=1.0e-6, ITER_GLOB_MAXI=50),
+    )
+
+
+except CA.AsterError as err:
+    if err.id_message == "CONTACT1_3":
+        is_ok = 1
+
+test.assertEqual(is_ok, 1)
+
+
+for vari in vari_cont:
+    DEFICO = DEFI_CONT(
+        MODELE=model,
+        ZONE=_F(
+            APPARIEMENT="MORTAR",
+            GROUP_MA_MAIT="Group_2",
+            GROUP_MA_ESCL="Group_1",
+            ALGO_CONT="NITSCHE",
+            COEF_CONT=2000.0,
+            CONTACT_INIT="INTERPENETRE",
+            **vari,
+        ),
+    )
+
+    nonLineResu = MECA_NON_LINE(
+        INFO=1,
+        MODELE=model,
+        CHAM_MATER=materialField,
+        EXCIT=(_F(CHARGE=symBC, FONC_MULT=unitRamp), _F(CHARGE=pressure, FONC_MULT=unitRamp)),
+        CONTACT=_F(DEFINITION=DEFICO, ALGO_RESO_GEOM="NEWTON"),
+        NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+        INCREMENT=_F(LIST_INST=realList),
+        COMPORTEMENT=_F(RELATION="ELAS", DEFORMATION="PETIT", TOUT="OUI"),
+        SOLVEUR=_F(METHODE="MUMPS", RESI_RELA=1.0e-6, PCENT_PIVOT=30),
+        CONVERGENCE=_F(RESI_GLOB_MAXI=1.0e-6, ITER_GLOB_MAXI=50),
+    )
+
+    nonLineResu = CALC_CHAMP(reuse=nonLineResu, RESULTAT=nonLineResu, CONTRAINTE=("SIEF_NOEU"))
+
+    nonLineResu = CALC_CHAMP(
+        reuse=nonLineResu,
+        RESULTAT=nonLineResu,
+        CONTRAINTE="SIGM_NOEU",
+        FORCE=("FORC_NODA", "REAC_NODA"),
+    )
+
+    TEST_RESU(
+        RESU=(
+            _F(
+                INST=1.0,
+                TYPE_TEST="MIN",
+                RESULTAT=nonLineResu,
+                REFERENCE="ANALYTIQUE",
+                NOM_CHAM="SIEF_NOEU",
+                LEGENDE="CALC_PRESSION",
+                NOM_CMP="SIYY",
+                VALE_REFE=-25.0,
+                VALE_CALC=-25.0,
+            ),
+            _F(
+                INST=1.0,
+                TYPE_TEST="MAX",
+                RESULTAT=nonLineResu,
+                REFERENCE="ANALYTIQUE",
+                NOM_CHAM="SIEF_NOEU",
+                LEGENDE="CALC_PRESSION",
+                NOM_CMP="SIYY",
+                VALE_REFE=-25.0,
+                VALE_CALC=-25.00,
+            ),
+        )
+    )
+
+FIN()

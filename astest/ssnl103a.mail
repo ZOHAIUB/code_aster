@@ -1,0 +1,52 @@
+ TITRE
+     POUTRE EN G.D. ENCASTREE A UNE EXTREMITE ET SOUMISE A UN MOMENT            
+ FINSF
+ %
+ COOR_3D
+ N1        0.00000000000000E+00  0.00000000000000E+00  0.00000000000000E+00
+ N2        2.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ N3        4.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ N4        6.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ N5        8.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ N6        1.00000000000000E+00  0.00000000000000E+00  0.00000000000000E+00
+ FINSF
+ %
+ SEG2    
+ S1       N1       N2      
+ S2       N2       N3      
+ S3       N3       N4      
+ S4       N4       N5      
+ S5       N5       N6      
+ FINSF
+ %
+ GROUP_NO
+ POUTRE                  
+ N1       N2       N3       N4       N5       N6      
+ FINSF
+ %
+ GROUP_NO
+ N3                      
+ N3      
+ FINSF
+ %
+ GROUP_NO
+ N1                      
+ N1      
+ FINSF
+ %
+ GROUP_NO
+ N6                      
+ N6      
+ FINSF
+ %
+ GROUP_NO
+ N4                      
+ N4      
+ FINSF
+ %
+ GROUP_MA
+ POUTRE                  
+ S1       S2       S3       S4       S5      
+ FINSF
+ %
+ FIN

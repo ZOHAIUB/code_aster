@@ -1,0 +1,424 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+# ======================================================================
+#
+#  Ce test sert a verifier la bonne programmation
+#  des options  CHAR_MECA_HYDR_R et CHAR_MECA_SECH_R
+#
+#  Pour cela, on compare les solutions d'un probleme mecanique dans lequel
+#  l'unique chargement est :
+#       / CHAR_MECA_TEMP_R
+#       / CHAR_MECA_HYDR_R
+#       / CHAR_MECA_SECH_R
+#
+#  Les analogies sont :
+#       B_ENDOGE*HYDR            = - ALPHA*(TEMP-TEMP_REF)
+#       K_DESSIC*(SECH-SECH_REF) = + ALPHA*(TEMP-TEMP_REF)
+#
+#  Dans ce test, ce sont les variables de commande (TEMP,HYDR,SECH) qui
+#  sont a l'origine des chargements.
+#  On fait un calcul thermique (quelconque) qui determine TEMP.
+#  Lorsque l'on a besoin de HYDR et SECH, on prend le champ de TEMP.
+#
+# ======================================================================
+# ......................................................................
+#
+# MODELISATION 2D_AXIS:   121 NOEUDS -- 32 MAILLES QUA8
+# ......................................................................
+#
+#        INTERNE                   EXTERNE
+#               D -----+----- C
+# !               !    J    !
+#                 !         !
+# !               !         !
+#                 !         !        10 MM
+# !               !         !
+#                 !         !
+# !               !    F    !
+#     19.5 MM   A -----+-----  B
+# !-------------->   1.0 MM
+#                 <--------->
+
+
+MA = LIRE_MAILLAGE(FORMAT="MED")
+
+
+# =================================================================================================
+# A) Calcul thermique :
+# ----------------------
+
+MOTHER = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="THERMIQUE", MODELISATION="PLAN"))
+
+MATHER = DEFI_MATERIAU(THER=_F(LAMBDA=1.0, RHO_CP=0.0))
+
+CHMATHE = AFFE_MATERIAU(MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MATHER))
+
+CHTHE = AFFE_CHAR_THER(
+    MODELE=MOTHER, TEMP_IMPO=(_F(GROUP_MA=("BC",), TEMP=0.5), _F(GROUP_MA=("DA",), TEMP=-0.5))
+)
+TEMPLIN = THER_LINEAIRE(
+    MODELE=MOTHER,
+    CHAM_MATER=CHMATHE,
+    TYPE_CALCUL="STAT",
+    INCREMENT=_F(LIST_INST=DEFI_LIST_REEL(VALE=0.0)),
+    EXCIT=_F(CHARGE=CHTHE),
+)
+
+
+# =================================================================================================
+# B) Calculs mecaniques :
+# ------------------------
+MO = AFFE_MODELE(MAILLAGE=MA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="AXIS"))
+
+E = DEFI_CONSTANTE(VALE=2.0e5)
+NU = DEFI_CONSTANTE(VALE=0.3)
+
+MAT1 = DEFI_MATERIAU(ELAS=_F(E=2.0e5, NU=0.3, RHO=8.0e-6, ALPHA=1.0e-5))
+MAT2 = DEFI_MATERIAU(ELAS_FO=_F(E=E, NU=NU, B_ENDOGE=1.0e-5))
+MAT3 = DEFI_MATERIAU(ELAS_FO=_F(E=E, NU=NU, K_DESSIC=1.0e-5))
+
+CHDIL = AFFE_CHAR_MECA(MODELE=MO, DDL_IMPO=_F(GROUP_MA="TOUT", DY=0.0))
+
+
+# ------------------------------------------------------------------
+# 1) variable de commande : TEMP (sert de reference)
+# -----------------------------------------------------
+
+CHMA1 = AFFE_MATERIAU(
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", MATER=MAT1),
+    AFFE_VARC=_F(NOM_VARC="TEMP", EVOL=TEMPLIN, VALE_REF=0.0),
+)
+
+
+DEP1 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA1, EXCIT=_F(CHARGE=CHDIL))
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            GROUP_NO="A",
+            RESULTAT=DEP1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.0562499149531001e-06,
+            CRITERE="RELATIF",
+        ),
+        _F(
+            NUME_ORDRE=1,
+            GROUP_NO="F",
+            RESULTAT=DEP1,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.2376116900044999e-06,
+            CRITERE="RELATIF",
+        ),
+    )
+)
+
+# ------------------------------------------------------------------
+# 2) variable de commande : HYDR
+# --------------------------------
+
+tempFinal = CREA_CHAMP(
+    OPERATION="EXTR", TYPE_CHAM="NOEU_TEMP_R", RESULTAT=TEMPLIN, NOM_CHAM="TEMP", INST=0.0
+)
+
+hydrFinal = CREA_CHAMP(
+    OPERATION="ASSE",
+    MODELE=MO,
+    TYPE_CHAM="NOEU_HYDR_R",
+    ASSE=_F(CHAM_GD=tempFinal, TOUT="OUI", NOM_CMP=("TEMP"), NOM_CMP_RESU=("HYDR")),
+)
+
+
+CHMA2 = AFFE_MATERIAU(
+    MAILLAGE=MA, AFFE=_F(TOUT="OUI", MATER=MAT2), AFFE_VARC=_F(NOM_VARC="HYDR", CHAM_GD=hydrFinal)
+)
+
+
+DEP2 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA2, EXCIT=_F(CHARGE=CHDIL))
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            GROUP_NO="A",
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=DEP2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.05624991e-06,
+            VALE_REFE=-1.0562499149531001e-06,
+            CRITERE="RELATIF",
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=1,
+            GROUP_NO="F",
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=DEP2,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.23761169e-06,
+            VALE_REFE=1.2376116900044999e-06,
+            CRITERE="RELATIF",
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+
+# ------------------------------------------------------------------
+# 3) variable de commande : SECH
+# --------------------------------
+
+
+sechFinal = CREA_CHAMP(
+    OPERATION="ASSE",
+    MODELE=MO,
+    TYPE_CHAM="NOEU_TEMP_R",
+    ASSE=_F(CHAM_GD=tempFinal, TOUT="OUI", NOM_CMP=("TEMP"), NOM_CMP_RESU=("SECH")),
+)
+
+SECHLIN = CREA_RESU(
+    OPERATION="AFFE",
+    TYPE_RESU="EVOL_SECH",
+    AFFE=(_F(NOM_CHAM="SECH", CHAM_GD=sechFinal, INST=0.0),),
+)
+
+CHMA3 = AFFE_MATERIAU(
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", MATER=MAT3),
+    AFFE_VARC=_F(NOM_VARC="SECH", EVOL=SECHLIN, VALE_REF=0.0),
+)
+
+
+DEP3 = MECA_STATIQUE(MODELE=MO, CHAM_MATER=CHMA3, EXCIT=_F(CHARGE=CHDIL))
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            GROUP_NO="A",
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=DEP3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=1.05624991e-06,
+            VALE_REFE=1.0562499149531001e-06,
+            CRITERE="RELATIF",
+            PRECISION=1.0e-3,
+        ),
+        _F(
+            NUME_ORDRE=1,
+            GROUP_NO="F",
+            REFERENCE="AUTRE_ASTER",
+            RESULTAT=DEP3,
+            NOM_CHAM="DEPL",
+            NOM_CMP="DX",
+            VALE_CALC=-1.23761169e-06,
+            VALE_REFE=-1.2376116900044999e-06,
+            CRITERE="RELATIF",
+            PRECISION=1.0e-3,
+        ),
+    )
+)
+
+# ------------------------------------------------------------------
+# 4) Validation de l'option 'VARC_ELGA' :
+# ----------------------------------------
+
+CALC_CHAMP(reuse=DEP1, RESULTAT=DEP1, VARI_INTERNE=("VARC_ELGA"))
+CALC_CHAMP(reuse=DEP2, RESULTAT=DEP2, VARI_INTERNE=("VARC_ELGA"))
+CALC_CHAMP(reuse=DEP3, RESULTAT=DEP3, VARI_INTERNE=("VARC_ELGA"))
+
+
+integ_temp = POST_ELEM(
+    MODELE=MO,
+    RESULTAT=DEP1,
+    INTEGRALE=_F(NOM_CHAM="VARC_ELGA", NOM_CMP="TEMP", TOUT="OUI", TYPE_MAILLE="2D"),
+)
+
+integ_hydr = POST_ELEM(
+    MODELE=MO,
+    RESULTAT=DEP2,
+    INTEGRALE=_F(NOM_CHAM="VARC_ELGA", NOM_CMP="HYDR", TOUT="OUI", TYPE_MAILLE="2D"),
+)
+
+integ_sech = POST_ELEM(
+    MODELE=MO,
+    RESULTAT=DEP3,
+    INTEGRALE=_F(NOM_CHAM="VARC_ELGA", NOM_CMP="SECH", TOUT="OUI", TYPE_MAILLE="2D"),
+)
+
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        POINT=3,
+        RESULTAT=DEP2,
+        NOM_CHAM="VARC_ELGA",
+        NOM_CMP="HYDR",
+        VALE_CALC=-0.38908770817241001,
+        CRITERE="RELATIF",
+        GROUP_MA="M1",
+    )
+)
+
+
+TEST_RESU(
+    RESU=_F(
+        NUME_ORDRE=1,
+        POINT=3,
+        RESULTAT=DEP3,
+        NOM_CHAM="VARC_ELGA",
+        NOM_CMP="SECH",
+        VALE_CALC=-0.38908770817241001,
+        CRITERE="RELATIF",
+        GROUP_MA="M1",
+    )
+)
+
+
+TEST_TABLE(
+    VALE_CALC=0.8333333333334441,
+    NOM_PARA="INTE_TEMP",
+    TABLE=integ_temp,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=1),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_REFE=0.8333333333334441,
+    VALE_CALC=0.8333333333334441,
+    NOM_PARA="INTE_HYDR",
+    TABLE=integ_hydr,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=1),
+)
+
+TEST_TABLE(
+    CRITERE="RELATIF",
+    REFERENCE="AUTRE_ASTER",
+    VALE_REFE=0.8333333333334441,
+    VALE_CALC=0.8333333333334441,
+    NOM_PARA="INTE_SECH",
+    TABLE=integ_sech,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=1),
+)
+
+# ------------------------------------------------------------------
+# 5) Test FORC_VARC_ELEM dans CALCUL
+# ------------------------------------------------------------------
+
+M_EL = CALC_MATR_ELEM(OPTION="RIGI_MECA", MODELE=MO, CHAM_MATER=CHMA1, CHARGE=CHDIL)
+
+NUMEDD = NUME_DDL(MATR_RIGI=M_EL)
+
+
+MATAS = ASSE_MATRICE(MATR_ELEM=M_EL, NUME_DDL=NUMEDD)
+
+MATAS = FACTORISER(reuse=MATAS, MATR_ASSE=MATAS, METHODE="MULT_FRONT")
+
+
+U = CREA_CHAMP(
+    TYPE_CHAM="NOEU_DEPL_R",
+    OPERATION="AFFE",
+    MAILLAGE=MA,
+    AFFE=_F(TOUT="OUI", NOM_CMP=("DX", "DY"), VALE=(0.0, 0.0)),
+)
+
+
+SIGP = CREA_CHAMP(
+    TYPE_CHAM="ELGA_SIEF_R",
+    OPERATION="AFFE",
+    MODELE=MO,
+    AFFE=_F(TOUT="OUI", NOM_CMP=("SIXX", "SIYY", "SIZZ", "SIXY"), VALE=(0.0, 0.0, 0.0, 0.0)),
+)
+
+
+VARIP = CREA_CHAMP(
+    OPERATION="AFFE",
+    TYPE_CHAM="ELGA_VARI_R",
+    MODELE=MO,
+    AFFE=_F(TOUT="OUI", NOM_CMP=("V1",), VALE=(0.0,)),
+)
+
+
+FEL_DIL1 = CALC_VECT_ELEM(OPTION="FORC_VARC", CHAM_MATER=CHMA1, MODELE=MO)
+
+
+FAS_DIL1 = ASSE_VECTEUR(VECT_ELEM=FEL_DIL1, NUME_DDL=NUMEDD)
+
+
+FEL_DIL2 = CALC_VECT_ELEM(OPTION="FORC_VARC", CHAM_MATER=CHMA1, MODELE=MO)
+
+FAS_DIL2 = ASSE_VECTEUR(VECT_ELEM=FEL_DIL2, NUME_DDL=NUMEDD)
+
+
+DU1 = RESOUDRE(MATR=MATAS, CHAM_NO=FAS_DIL1)
+
+
+DU2 = RESOUDRE(MATR=MATAS, CHAM_NO=FAS_DIL2)
+
+TEST_RESU(
+    CHAM_NO=(
+        _F(
+            GROUP_NO="A",
+            CHAM_GD=DU1,
+            NOM_CMP="DX",
+            VALE_CALC=1.0562499149531001e-06,
+            CRITERE="RELATIF",
+        ),
+        _F(
+            GROUP_NO="F",
+            CHAM_GD=DU1,
+            NOM_CMP="DX",
+            VALE_CALC=-1.2376116900044999e-06,
+            CRITERE="RELATIF",
+        ),
+    )
+)
+
+TEST_RESU(
+    CHAM_NO=(
+        _F(
+            GROUP_NO="A",
+            CHAM_GD=DU2,
+            NOM_CMP="DX",
+            VALE_CALC=1.0562499149531001e-06,
+            CRITERE="RELATIF",
+        ),
+        _F(
+            GROUP_NO="F",
+            CHAM_GD=DU2,
+            NOM_CMP="DX",
+            VALE_CALC=-1.2376116900044999e-06,
+            CRITERE="RELATIF",
+        ),
+    )
+)
+
+FIN()

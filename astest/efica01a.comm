@@ -1,0 +1,272 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#
+# Ce cas test est gere en configuration dans la base ASTER, il sert de
+# modele pour prononcer la recette de l IHM d EFICAS : l objectif est de
+# pouvoir recreer ce test a l identique dans EFICAS a partir d une page
+# blanche.
+# On a donc essaye d y placer toutes les commandes un peu particulieres
+# du langage de commandes d ASTER
+#
+# Il s agit en fait du test SDND102A auquel on a ajoute :
+#      la definition d un parametre (VAL)
+#      une poursuite (POURSUITE)
+# Il contient ainsi :
+# des parametres, des formules, des macros, des mots cles facteurs repetes
+# (y compris conditionnes par des regles : calc_fonction / COMB),
+# des blocs  (modes_meca,calc_char_seisme), un defi_valeur, un parametre.
+#
+#
+# Il faudra y associer quelques recommandations pour la recette :
+# - verifier qu en ouvrant le .com0, il demande bien a browser le .comm puis, en cascade, le .11
+# - verifier qu on peut bien supprimer une commande, un mot cle simple et facteur
+# - verifier les acces a la doc
+#
+#
+
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"), LANG="FR")
+
+MAILLAGE = LIRE_MAILLAGE(FORMAT="ASTER")
+
+MODELE = AFFE_MODELE(
+    MAILLAGE=MAILLAGE,
+    AFFE=(
+        _F(GROUP_MA="RESSORT", PHENOMENE="MECANIQUE", MODELISATION="DIS_T"),
+        _F(GROUP_MA="MASSES", PHENOMENE="MECANIQUE", MODELISATION="DIS_T"),
+    ),
+)
+
+
+MAILLA2 = LIRE_MAILLAGE(FORMAT="ASTER", UNITE=21)
+
+BICHOC = AFFE_MODELE(
+    MAILLAGE=MAILLA2,
+    AFFE=(
+        _F(GROUP_MA="RESSORTS", PHENOMENE="MECANIQUE", MODELISATION="DIS_T"),
+        _F(GROUP_MA=("MASSES1", "MASSES2"), PHENOMENE="MECANIQUE", MODELISATION="DIS_T"),
+    ),
+)
+VAL = 98696.0
+
+
+CARA_ELE = AFFE_CARA_ELEM(
+    MODELE=MODELE,
+    DISCRET=(
+        _F(GROUP_MA="RESSORT", REPERE="GLOBAL", CARA="K_T_D_L", VALE=(VAL, 0.0, 0.0)),
+        _F(
+            GROUP_MA="RESSORT",
+            REPERE="GLOBAL",
+            CARA="M_T_L",
+            VALE=(
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ),
+        ),
+        _F(GROUP_MA="MASSES", CARA="M_T_D_N", VALE=25.0),
+    ),
+)
+
+CARA_BIC = AFFE_CARA_ELEM(
+    MODELE=BICHOC,
+    DISCRET=(
+        _F(GROUP_MA="RESSORTS", REPERE="GLOBAL", CARA="K_T_D_L", VALE=(VAL, 0.0, 0.0)),
+        _F(
+            GROUP_MA="RESSORTS",
+            REPERE="GLOBAL",
+            CARA="M_T_L",
+            VALE=(
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ),
+        ),
+        _F(GROUP_MA="MASSES1", CARA="M_T_D_N", VALE=25.0),
+        _F(GROUP_MA="MASSES2", CARA="M_T_D_N", VALE=25.0),
+    ),
+)
+
+CON_LIM = AFFE_CHAR_MECA(
+    MODELE=MODELE,
+    DDL_IMPO=(
+        _F(GROUP_NO="ENCASTRE", DX=0.0, DY=0.0, DZ=0.0),
+        _F(GROUP_NO="MASSES", DY=0.0, DZ=0.0),
+    ),
+)
+
+CL_BICHO = AFFE_CHAR_MECA(
+    MODELE=BICHOC,
+    DDL_IMPO=(
+        _F(GROUP_NO="ENCBICHO", DX=0.0, DY=0.0, DZ=0.0),
+        _F(GROUP_NO=("MASSES1", "MASSES2"), DY=0.0, DZ=0.0),
+    ),
+)
+
+ASSEMBLAGE(
+    MODELE=MODELE,
+    CARA_ELEM=CARA_ELE,
+    CHARGE=CON_LIM,
+    NUME_DDL=CO("NUMEDDL"),
+    MATR_ASSE=(
+        _F(MATRICE=CO("RIGIDITE"), OPTION="RIGI_MECA"),
+        _F(MATRICE=CO("MASSE"), OPTION="MASS_MECA"),
+    ),
+)
+
+ASSEMBLAGE(
+    MODELE=BICHOC,
+    CARA_ELEM=CARA_BIC,
+    CHARGE=CL_BICHO,
+    NUME_DDL=CO("NUMDDLC"),
+    MATR_ASSE=(
+        _F(MATRICE=CO("RIGI_BIC"), OPTION="RIGI_MECA"),
+        _F(MATRICE=CO("MASS_BIC"), OPTION="MASS_MECA"),
+    ),
+)
+
+MODE_MEC = CALC_MODES(MATR_MASS=MASSE, MATR_RIGI=RIGIDITE)
+
+
+MODE_MEC = NORM_MODE(reuse=MODE_MEC, MODE=MODE_MEC, NORME="MASS_GENE")
+
+MODE_BIC = CALC_MODES(
+    MATR_RIGI=RIGI_BIC,
+    OPTION="BANDE",
+    CALC_FREQ=_F(FREQ=(1.0, 10.0)),
+    MATR_MASS=MASS_BIC,
+    SOLVEUR_MODAL=_F(MODE_RIGIDE="NON", METHODE="TRI_DIAG"),
+)
+
+MODE_BIC = NORM_MODE(reuse=MODE_BIC, MODE=MODE_BIC, NORME="MASS_GENE")
+
+MODE_STA = MODE_STATIQUE(
+    SOLVEUR=_F(NB_RHS=1),
+    MATR_RIGI=RIGIDITE,
+    MATR_MASS=MASSE,
+    MODE_STAT=_F(TOUT="OUI", AVEC_CMP="DX"),
+)
+
+MSTA_BIC = MODE_STATIQUE(
+    SOLVEUR=_F(NB_RHS=1),
+    MATR_RIGI=RIGI_BIC,
+    MATR_MASS=MASS_BIC,
+    MODE_STAT=_F(TOUT="OUI", AVEC_CMP="DX"),
+)
+# IMPR_CO(NIVEAU=-1,CONCEPT=_F(NOM=MSTA_BIC),PERMUTATION='NON',UNITE=6)
+
+L_INST = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=1.0, PAS=1.0e-4))
+
+OMEGAA = 2.0 * pi * 10.0
+
+ACCE1 = FORMULE(VALE="sin(OMEGAA*INST)", NOM_PARA="INST", OMEGAA=OMEGAA)
+
+ACCELER1 = CALC_FONC_INTERP(
+    FONCTION=ACCE1,
+    NOM_RESU="ACCE",
+    LIST_PARA=L_INST,
+    NOM_PARA="INST",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+ACCE2 = FORMULE(VALE="-sin(OMEGAA*INST)", NOM_PARA="INST", OMEGAA=OMEGAA)
+
+ACCELER2 = CALC_FONC_INTERP(
+    FONCTION=ACCE2,
+    NOM_RESU="ACCE",
+    LIST_PARA=L_INST,
+    NOM_PARA="INST",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+VITE1 = FORMULE(VALE="-cos(OMEGAA*INST)/OMEGAA", NOM_PARA="INST", OMEGAA=OMEGAA)
+
+VITESSE1 = CALC_FONC_INTERP(
+    FONCTION=VITE1,
+    NOM_RESU="VITE",
+    LIST_PARA=L_INST,
+    NOM_PARA="INST",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+DEPL1 = FORMULE(VALE="-sin(OMEGAA*INST)/(OMEGAA**2)", NOM_PARA="INST", OMEGAA=OMEGAA)
+
+DEPLACE1 = CALC_FONC_INTERP(
+    FONCTION=DEPL1,
+    NOM_RESU="DEPL",
+    LIST_PARA=L_INST,
+    NOM_PARA="INST",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+VITE2 = FORMULE(VALE="cos(OMEGAA*INST)/OMEGAA", NOM_PARA="INST", OMEGAA=OMEGAA)
+
+VITESSE2 = CALC_FONC_INTERP(
+    FONCTION=VITE2,
+    NOM_RESU="VITE",
+    LIST_PARA=L_INST,
+    NOM_PARA="INST",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+)
+
+xx = 2
+
+FIN()

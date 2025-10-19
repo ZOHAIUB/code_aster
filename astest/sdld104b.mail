@@ -1,0 +1,58 @@
+ TITRE
+JE-01-JUIL-2021 07:54:14                                                        
+ FINSF
+ %
+ COOR_3D
+ N1        0.00000000000000E+00  0.00000000000000E+00  0.00000000000000E+00
+ N2        1.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ N3        2.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ N4        3.00000000000000E-01  0.00000000000000E+00  0.00000000000000E+00
+ FINSF
+ %
+ POI1    
+ P1       N2      
+ P2       N3      
+ FINSF
+ %
+ SEG2    
+ M1       N1       N2      
+ M2       N2       N3      
+ M3       N3       N4      
+ FINSF
+ %
+ GROUP_NO
+ N1                      
+ N4      
+ FINSF
+ %
+ GROUP_NO
+ N4                      
+ N4      
+ FINSF
+ %
+ GROUP_NO
+ N3                      
+ N3      
+ FINSF
+ %
+ GROUP_NO
+ N2                      
+ N2      
+ FINSF
+ %
+ GROUP_MA
+ TOUT                    
+ M1       M2       M3      
+ FINSF
+ %
+ GROUP_MA
+ P1                    
+ P1      
+ FINSF
+ %
+ GROUP_MA
+ P2                    
+ P2      
+ FINSF
+ %
+ FIN

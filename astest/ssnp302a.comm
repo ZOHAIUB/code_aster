@@ -1,0 +1,161 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+#
+# ELEMENTS QUAD4
+# .....................................................................
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+MAYA = LIRE_MAILLAGE(FORMAT="ASTER")
+
+MODEL = AFFE_MODELE(
+    MAILLAGE=MAYA, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="C_PLAN")
+)
+
+ACIER = DEFI_MATERIAU(ELAS=_F(E=200000.0, NU=0.0, ALPHA=1.0e-6))
+
+
+TRAC_FO = DEFI_FONCTION(
+    NOM_PARA="INST", PROL_DROITE="EXCLU", PROL_GAUCHE="EXCLU", VALE=(0.0, 0.0, 1.0, 100.0)
+)
+T0 = CREA_CHAMP(
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_TEMP_R",
+    MAILLAGE=MAYA,
+    AFFE=(_F(TOUT="OUI", NOM_CMP="TEMP", VALE=0.0)),
+)
+
+T_CAL = CREA_CHAMP(
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_TEMP_R",
+    MAILLAGE=MAYA,
+    AFFE=(
+        _F(GROUP_NO="NO1", NOM_CMP="TEMP", VALE=0.0),
+        _F(GROUP_NO="NO4", NOM_CMP="TEMP", VALE=0.0),
+        _F(GROUP_NO="NO2", NOM_CMP="TEMP", VALE=1000.0),
+        _F(GROUP_NO="NO3", NOM_CMP="TEMP", VALE=1000.0),
+    ),
+)
+
+TCALC = CREA_RESU(
+    OPERATION="AFFE", TYPE_RESU="EVOL_THER", AFFE=_F(NOM_CHAM="TEMP", CHAM_GD=T0, INST=0.0)
+)
+TCALC = CREA_RESU(
+    reuse=TCALC,
+    RESULTAT=TCALC,
+    OPERATION="AFFE",
+    TYPE_RESU="EVOL_THER",
+    AFFE=_F(NOM_CHAM="TEMP", CHAM_GD=T_CAL, INST=1.0),
+)
+
+
+TRAC = AFFE_CHAR_MECA(
+    MODELE=MODEL, FORCE_NODALE=(_F(GROUP_NO="NO2", FX=0.5), _F(GROUP_NO="NO3", FX=0.5))
+)
+
+CONDLIM = AFFE_CHAR_MECA(
+    MODELE=MODEL, DDL_IMPO=(_F(GROUP_NO="NO1", DX=0.0, DY=0.0), _F(GROUP_NO="NO4", DX=0.0))
+)
+
+CAT = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=1.0, NOMBRE=1))
+
+MATER = AFFE_MATERIAU(
+    MAILLAGE=MAYA,
+    AFFE=_F(TOUT="OUI", MATER=ACIER),
+    AFFE_VARC=_F(TOUT="OUI", EVOL=TCALC, VALE_REF=0.0, NOM_VARC="TEMP"),
+)
+
+CALCNL = STAT_NON_LINE(
+    MODELE=MODEL,
+    CHAM_MATER=MATER,
+    COMPORTEMENT=_F(RELATION="ELAS", DEFORMATION="PETIT"),
+    INCREMENT=_F(LIST_INST=CAT),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_INCR=1, REAC_ITER=1),
+    EXCIT=(_F(CHARGE=CONDLIM), _F(CHARGE=TRAC, FONC_MULT=TRAC_FO)),
+    RECH_LINEAIRE=_F(ITER_LINE_MAXI=3),
+)
+
+CALCNL = CALC_CHAMP(
+    reuse=CALCNL, CONTRAINTE=("SIGM_ELNO"), VARI_INTERNE=("VARI_ELNO"), RESULTAT=CALCNL
+)
+
+
+CALCNL = CALC_CHAMP(reuse=CALCNL, DEFORMATION=("EPSI_ELNO"), RESULTAT=CALCNL)
+
+
+TEST_RESU(
+    RESU=(
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="SIGM_ELNO",
+            GROUP_NO="NO1",
+            NOM_CMP="SIXX",
+            VALE_CALC=200.0,
+            VALE_REFE=200.0,
+            REFERENCE="ANALYTIQUE",
+            PRECISION=1.0e-3,
+            CRITERE="RELATIF",
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="SIGM_ELNO",
+            GROUP_NO="NO4",
+            NOM_CMP="SIXX",
+            VALE_CALC=200.0,
+            VALE_REFE=200.0,
+            REFERENCE="ANALYTIQUE",
+            PRECISION=1.0e-3,
+            CRITERE="RELATIF",
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="SIGM_ELNO",
+            GROUP_NO="NO2",
+            NOM_CMP="SIXX",
+            VALE_CALC=0.0,
+            VALE_REFE=0.0,
+            REFERENCE="ANALYTIQUE",
+            PRECISION=1.0e-3,
+            CRITERE="ABSOLU",
+            GROUP_MA="MA1",
+        ),
+        _F(
+            NUME_ORDRE=1,
+            RESULTAT=CALCNL,
+            NOM_CHAM="SIGM_ELNO",
+            GROUP_NO="NO3",
+            NOM_CMP="SIXX",
+            VALE_CALC=0.0,
+            VALE_REFE=0.0,
+            REFERENCE="ANALYTIQUE",
+            PRECISION=1.0e-3,
+            CRITERE="ABSOLU",
+            GROUP_MA="MA1",
+        ),
+    )
+)
+
+FIN()
+#

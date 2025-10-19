@@ -1,0 +1,368 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+import os
+import os.path as osp
+import re
+import shutil
+from functools import partial
+
+from waflib import Configure, Errors, Logs, Task, TaskGen, Utils
+
+from waftools.wafutils import compare_versions
+
+
+def options(self):
+    group = self.add_option_group("MFront library options")
+    group.add_option(
+        "--disable-mfront",
+        dest="enable_mfront",
+        default=None,
+        action="store_false",
+        help="disable the MFRONT support",
+    )
+    group.add_option(
+        "--enable-mfront",
+        dest="enable_mfront",
+        default=None,
+        action="store_true",
+        help="force the MFRONT support. The TFELHOME environment "
+        "variable can be used to choose a prefered version.",
+    )
+
+
+def configure(self):
+    opts = self.options
+    try:
+        self.env.stash()
+        self.check_mgis()
+        self.check_mfront()
+    except Errors.ConfigurationError:
+        self.reset_msg()
+        self.env.revert()
+        if opts.enable_mfront is True:
+            raise
+        self.undefine("ASTER_HAVE_MFRONT")
+        self.undefine("ASTER_HAVE_MGIS")
+        self.env.TFELSUFFIX = ""
+    else:
+        self.define("ASTER_HAVE_MFRONT", 1)
+        self.define("ASTER_HAVE_MGIS", 1)
+        self.env.BUILD_MFRONT = True
+
+
+def build(self):
+    env = self.all_envs[self.variant]
+    if env.BUILD_MFRONT:
+        get_srcs = self.path.get_src().ant_glob
+        lmfront = get_srcs("**/*.mfront")
+        lst = [i.name for i in lmfront]
+
+        self(
+            features="cxx cxxshlib",
+            name="asterbehaviour",
+            source=lmfront,
+            includes=[osp.join(osp.splitext(i)[0], "include") for i in lst],
+            target=env["ASTER_BEHAVIOUR_LIB"],
+            rpath="$ORIGIN",
+            install_path=env.ASTERLIBDIR,
+            env=env.derive(),
+            use=["MFRONT", "MFRONT_ONLY", "CXX"],
+        )
+
+
+###############################################################################
+@Configure.conf
+def check_mgis(self):
+    opts = self.options
+    if opts.enable_mfront is False:
+        raise Errors.ConfigurationError("MGIS disabled")
+    # for MGIS
+    self.check_mgis_headers()
+    self.check_mgis_api_version(1)
+    self.check_mgis_libs()
+
+
+@Configure.conf
+def check_mfront(self):
+    opts = self.options
+    if opts.enable_mfront is False:
+        raise Errors.ConfigurationError("MFRONT disabled")
+
+    self.start_msg("Checking for TFELHOME variable")
+    # takes TFELHOME from env (wafcfg) or environment
+    if not self.env.TFELHOME:
+        self.add_os_flags("TFELHOME")
+    if not self.env.TFELHOME:
+        self.find_program("tfel-config", var="TFEL_CONFIG", mandatory=False)
+        if self.env.TFEL_CONFIG:
+            cmd = self.env.TFEL_CONFIG + ["--library-path"]
+            path = self.cmd_and_log(cmd).strip()
+            self.env.TFELHOME = osp.dirname(path)
+    if not self.env.TFELHOME:
+        self.end_msg("no", "YELLOW")
+        raise Errors.ConfigurationError("TFELHOME must be defined!")
+    self.end_msg(self.env.TFELHOME)
+
+    tfelhome = Utils.to_list(self.env.TFELHOME)
+    paths = self.environ.get("PATH", "").split(os.pathsep)
+    if tfelhome:
+        paths.insert(0, osp.join(tfelhome[0], "bin"))
+    self.env.TFELHOME = tfelhome
+    ext = ".exe" if self.env.ASTER_PLATFORM_MINGW else ""
+    # export TFELHOME for future checkings
+    os.environ["TFELHOME"] = tfelhome[0]
+    # takes TFELVERS from env (wafcfg) or environment
+    if not self.env.TFELVERS:
+        self.add_os_flags("TFELVERS")
+    tfelvers = Utils.to_list(self.env.TFELVERS)
+    # Define suffix for version
+    if not tfelvers:
+        self.env.TFELSUFFIX = ""
+    else:
+        self.env.TFELSUFFIX = "-" + tfelvers[0]
+    # Define programs names mfront and tfel-config
+    self.find_program("mfront" + self.env.TFELSUFFIX + ext, path_list=paths, var="MFRONT")
+    self.find_program("tfel-config" + self.env.TFELSUFFIX + ext, path_list=paths, var="TFEL_CONFIG")
+
+    tfel_config = self.env.TFEL_CONFIG[0]
+    self.check_cfg(
+        path=tfel_config,
+        msg="Checking for '{0}'".format(osp.basename(tfel_config)),
+        args="--cppflags --includes --oflags0 --libs --material --utilities --system",
+        package="",
+        uselib_store="MFRONT",
+        mandatory=True,
+    )
+    if self.get_define("ASTER_HAVE_64_BITS"):
+        arch = "ASTER_ARCH=64"
+    else:
+        arch = "ASTER_ARCH=32"
+    self.env.append_value("DEFINES_MFRONT", arch)
+    # remove options usually used by MFront but in conflict with our code
+    for flag in ("-fvisibility=hidden", "-fvisibility-inlines-hidden"):
+        self.safe_remove("CFLAGS_MFRONT", flag)
+        self.safe_remove("CXXFLAGS_MFRONT", flag)
+        # these options are not relevant for C
+        self.env.append_value("CXXFLAGS_MFRONT_ONLY", flag)
+    self.env.append_value("CXXFLAGS_MFRONT_ONLY", "-Wno-return-type")
+    # MFront
+    self.check_mfront_version((4, 1, 0))
+    self.check_mfront_libs()
+    self.check_cxx11_abi()
+    self.check_mfront_obsolete_source()
+
+
+@Configure.conf
+def check_mfront_version(self, minver=None):
+    """Check if mfront is matching a given minimum version.
+    minver should be a tuple, eg. to check for mfront >= 2.0 pass (2,0,0) as minver.
+    """
+    assert isinstance(minver, tuple)
+    cmd = self.env.MFRONT + ["--version"]
+    res = self.cmd_and_log(cmd)
+    mfrver = "0.0.0"
+    regexp = re.compile(r"version *: *([0-9]+\.[0-9]+\..*) *", re.I | re.M)
+    mat = regexp.search(res.strip())
+    if mat:
+        mfrver = mat.group(1).strip()
+    if minver is None:
+        self.msg("Checking for mfront version", mfrver)
+        return
+    minver_str = ".".join(map(str, minver))
+    result = compare_versions(mfrver, minver_str) >= 0
+    self.msg(
+        "Checking for mfront version >= %s" % minver_str, mfrver, result and "GREEN" or "YELLOW"
+    )
+    if result:
+        self.define("ASTER_MFRONT_VERSION", mfrver)
+    else:
+        raise Errors.ConfigurationError(
+            "The MFront version is too old, required >= %r" % minver_str
+        )
+
+
+@Configure.conf
+def check_mfront_libs(self):
+    _check = partial(self.check_cxx, mandatory=True, uselib_store="MFRONT", use="MFRONT")
+    libs = ["TFELSystem" + self.env.TFELSUFFIX]
+    for lib in Utils.to_list(libs):
+        _check(lib=lib)
+
+
+@Configure.conf
+def check_cxx11_abi(self):
+    import ctypes
+
+    # LD_LIBRARY_PATH is not reread now.
+    # So 'libname' must not have dependencies out of initial LD_LIBRARY_PATH.
+    # Use http://demangler.com/ to demangle names
+    libname = "./libTFELUtilities" + self.env.TFELSUFFIX + ".so"
+    symbol = "replace_all"
+    prev = os.getcwd()
+    os.chdir(osp.join(self.env.TFELHOME[0], "lib"))
+    lib = ctypes.cdll.LoadLibrary(libname)
+    os.chdir(prev)
+    exists = getattr(lib, symbol, None) is not None
+    # if a such symbol exists, MFront was not compiled with cxx11 ABI.
+    use_cxx11_abi = int(not exists)
+    if not use_cxx11_abi:
+        self.env.append_value("CXXFLAGS", "-D_GLIBCXX_USE_CXX11_ABI=0")
+
+
+def remove(path):
+    """Remove a file or a directory"""
+    try:
+        shutil.rmtree(path)
+    except OSError:
+        os.remove(path)
+
+
+@Configure.conf
+def check_mfront_obsolete_source(self):
+    src = self.path.get_src().abspath()
+    # clean obsolete behaviours (from a previous build)
+    bld, mfront = osp.split(self.path.get_bld().abspath())
+    excl = ["libAsterMFrOfficial.so", "libAsterMFrOfficialDebug.so", "include"]
+    for variant in ("debug", "release"):
+        build = osp.join(bld, variant, mfront)
+        if osp.exists(build):
+            for node in os.listdir(build):
+                ignore = False
+                for excl_i in excl:
+                    if node.startswith(excl_i):
+                        ignore = True
+                if ignore:
+                    continue
+                if not osp.exists(osp.join(src, node + ".mfront")):
+                    Logs.warn("remove obsolete build: %s" % node)
+                    remove(osp.join(build, node))
+
+
+@TaskGen.extension(".hxx")
+def nothing(*k, **kw):
+    pass
+
+
+@TaskGen.extension(".mfront")
+def process_mfront(self, node):
+    name = osp.splitext(node.name)[0]
+    wrkdir = node.parent.find_or_declare(name)
+    # print "DEBUG: node:", node, "wkrdir:", wrkdir.abspath()
+    wrkdir.mkdir()
+    files = [name, name + "-generic"] + getAdditionalOutputs(node)
+
+    _nod = wrkdir.find_or_declare
+    outputs = [_nod(osp.join("src", i + ".cxx")) for i in files]
+    outputs.append(_nod(osp.join("include", "MFront", "GenericBehaviour", name + "-generic.hxx")))
+    outputs.extend(
+        [
+            _nod(osp.join("include", "TFEL", "Material", name + i + ".hxx"))
+            for i in ("", "BehaviourData", "IntegrationData")
+        ]
+    )
+    tsk = self.create_task("mfront2cxx", node, outputs)
+    self.source.extend(tsk.outputs)
+
+
+RE_OUTPUT = re.compile("^//output *(.*?) *$", re.M)
+
+
+def getAdditionalOutputs(node):
+    """Search additional outputs in a MFront file"""
+    found = RE_OUTPUT.findall(node.read())
+    return found
+
+
+class mfront2cxx(Task.Task):
+    """Convert a MFront source file into C++"""
+
+    color = "PINK"
+    ext_out = [".h", ".cxx"]
+    # force sequential to avoid dead locks
+    semaphore = Task.TaskSemaphore(1)
+
+    def run(self):
+        """Call MFront to convert `.mfront` to C++"""
+        name = osp.splitext(self.inputs[0].name)[0]
+        mfrdir = self.inputs[0].parent
+        wrknode = mfrdir.get_bld().find_or_declare(name)
+        if len(name) > 16:
+            msg = "The behaviour name is too long, max. 16 characters: '%s'" % name
+            raise Errors.WafError(msg)
+        wrkdir = wrknode.abspath()
+        cmd = "%s --interface=generic --search-path=%s %s" % (
+            self.env.MFRONT[0],
+            mfrdir.get_src().abspath(),
+            self.inputs[0].abspath(),
+        )
+        # self.generator.bld.cmd_and_log(cmd, cwd=wrkdir, quiet=Context.STDOUT)
+        self.exec_command(cmd, cwd=wrkdir)
+
+
+@Configure.conf
+def check_mgis_headers(self):
+    self.start_msg("Checking for headers from MGIS/Behaviour")
+    incs = ["MGIS/Config-c.h"]
+    incs.extend(
+        [
+            osp.join("MGIS/Behaviour/", hxx)
+            for hxx in ("Behaviour.hxx", "BehaviourData.hxx", "Integrate.hxx")
+        ]
+    )
+    try:
+        for hxx in incs:
+            self.check_cxx(header_name=hxx, uselib_store="MGIS", use="MGIS", mandatory=True)
+    except:
+        self.end_msg("no", "YELLOW")
+        raise
+    else:
+        self.end_msg("yes")
+
+
+@Configure.conf
+def check_mgis_api_version(self, vers):
+    fragment = r"""
+#include <stdio.h>
+#include <MGIS/Config-c.h>
+int main(void){
+    printf("%d", MGIS_BEHAVIOUR_API_VERSION);
+    return 0;
+}"""
+    self.start_msg("Checking MGIS API version")
+    ret = ""
+    try:
+        ret = self.check_cc(
+            fragment=fragment, use="MGIS", mandatory=True, execute=True, define_ret=True
+        )
+        if ret != str(vers):
+            raise ValueError
+    except:
+        self.end_msg("API version '{vers}' expected, found '{ret}'", "YELLOW")
+        raise
+    else:
+        self.end_msg(ret)
+
+
+@Configure.conf
+def check_mgis_libs(self):
+    _check = partial(self.check_cxx, mandatory=True, uselib_store="MGIS", use="MGIS")
+    libs = ["MFrontGenericInterface"]
+    for lib in Utils.to_list(libs):
+        _check(lib=lib)

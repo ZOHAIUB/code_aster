@@ -1,0 +1,309 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: goustan.bacquaert@edf.fr
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+### >>>>>>>>>>>>>
+### Read the mesh
+### <<<<<<<<<<<<<
+
+MAILLAGE = LIRE_MAILLAGE(FORMAT="MED")
+
+MAILLAGE = MODI_MAILLAGE(
+    reuse=MAILLAGE, MAILLAGE=MAILLAGE, ORIE_PEAU=_F(GROUP_MA_PEAU=("HAUT", "DEVANT", "DROITE"))
+)
+
+### >>>>>>>>>>>>>>>>>
+### Model affectation
+### <<<<<<<<<<<<<<<<<
+
+MODELE = AFFE_MODELE(
+    MAILLAGE=MAILLAGE, AFFE=_F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="3D_HHM")
+)
+
+### >>>>>>>>>>>>>>>>>>>
+### Material properties
+### <<<<<<<<<<<<<<<<<<<
+
+k = 15.0e6
+mu = 10.0e6
+kp = 0.02
+kps = 0.008
+Ks = 30.0e6
+M = 1.0
+pc0 = 100.0e3
+s0 = 200.0e3
+ks = 0.6
+lms = 0.08
+lm0 = 0.2
+bta = 12.5e-6
+r = 0.75
+pcr = 100.0e3
+alpha = 1.0
+e0 = 0.9
+
+# Water liquid properties
+rhol = 1000.0  # initial liquid mass specific volume [kg/m^3]
+unsurkl = 1.0e-12  # one over the liquid compressibility modulus [Pa^-1]
+viscol = 1.0e-3  # liquid viscosity [Pa.s]
+
+# Air gaz properties
+viscog = 9.0e-6  # gaz viscosity [Pa.s]
+mmolg = 0.02  # gas molar mass [kg/mol]
+
+# Poromechanics properties
+kint = 1.0e-8  # intrisic permeability [m^2]
+poro = 0.3  # initial porosity [-]
+biot = 1.0  # biot coefficient [-]
+
+# Van Genuchten parameters (for the capillary pressure-saturation relationship)
+N = 1.6
+PR = 16.0e6
+SR = 0.0
+SMAX = 0.99
+SATU = 1.0
+
+MATER = DEFI_MATERIAU(
+    ELAS=_F(E=9.0 * k * mu / (3.0 * k + mu), NU=(3.0 * k - 2.0 * mu) / (2.0 * (3.0 * k + mu))),
+    Barcelone=_F(
+        BulkModulus=k,
+        ShearModulus=mu,
+        SwellingIndex=kp,
+        SuccionIndex=kps,
+        SuccionModulus=Ks,
+        CritStateSlope=M,
+        InitConsPress=pc0,
+        YieldSuccion=s0,
+        YieldTensSlope=ks,
+        PlastSuccionIndex=lms,
+        PlastStrainIndex=lm0,
+        PlastStrainPara1=bta,
+        PlastStrainPara2=r,
+        RefeConsPress=pcr,
+        FlowCorrection=alpha,
+        InitVoidsRatio=e0,
+    ),
+    COMP_THM="LIQU_GAZ",
+    THM_LIQU=_F(
+        RHO=rhol,
+        UN_SUR_K=unsurkl,
+        VISC=DEFI_CONSTANTE(VALE=viscol),
+        D_VISC_TEMP=DEFI_CONSTANTE(VALE=0.0),
+    ),
+    THM_GAZ=_F(
+        MASS_MOL=mmolg, VISC=DEFI_CONSTANTE(VALE=viscog), D_VISC_TEMP=DEFI_CONSTANTE(VALE=0.0)
+    ),
+    THM_DIFFU=_F(
+        R_GAZ=8.314,
+        RHO=2400.0,
+        BIOT_COEF=biot,
+        PESA_X=0.0,
+        PESA_Y=0.0,
+        PESA_Z=0.0,
+        PERM_IN=DEFI_CONSTANTE(VALE=kint),
+        VG_N=N,
+        VG_PR=PR,
+        VG_SR=SR,
+        VG_SMAX=SMAX,
+        VG_SATUR=SATU,
+    ),
+    THM_INIT=_F(TEMP=293.0, PRE1=0.0, PRE2=1.0, PORO=e0 / (1.0 + e0)),
+)
+
+### >>>>>>>>>>>>>>>>>>>>
+### Material affectation
+### <<<<<<<<<<<<<<<<<<<<
+
+MATE = AFFE_MATERIAU(MAILLAGE=MAILLAGE, AFFE=_F(TOUT="OUI", MATER=MATER))
+
+### >>>>>>>>>>
+### Time steps
+### <<<<<<<<<<
+
+LI1 = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=(_F(JUSQU_A=1.0, NOMBRE=20), _F(JUSQU_A=2.0, NOMBRE=20)))
+
+DEFLIST = DEFI_LIST_INST(
+    DEFI_LIST=_F(LIST_INST=LI1), ECHEC=_F(EVENEMENT="ERREUR", ACTION="DECOUPE", SUBD_METHODE="AUTO")
+)
+
+### >>>>>>>>>>>>>>>>>>>
+### Boundary conditions
+### <<<<<<<<<<<<<<<<<<<
+
+COEF_PRES = DEFI_FONCTION(
+    NOM_PARA="INST", NOM_RESU="PRESSION", VALE=(0.0, 0.0, 1.0, 200.0e3, 2.0, 200.0e3)
+)
+
+CHA_PRES_LAT = AFFE_CHAR_MECA_F(
+    MODELE=MODELE, PRES_REP=_F(GROUP_MA=("DEVANT", "DROITE"), PRES=COEF_PRES), VERI_NORM="OUI"
+)
+
+CHA_PRES_AXI = AFFE_CHAR_MECA_F(
+    MODELE=MODELE, PRES_REP=_F(GROUP_MA="HAUT", PRES=COEF_PRES), VERI_NORM="OUI"
+)
+
+CHA_DISP_SYM = AFFE_CHAR_MECA(
+    MODELE=MODELE,
+    FACE_IMPO=(
+        _F(GROUP_MA="BAS", DZ=0.0),
+        _F(GROUP_MA="DERRIERE", DX=0.0),
+        _F(GROUP_MA="GAUCHE", DY=0.0),
+    ),
+)
+
+CHA_DISP_AXI = AFFE_CHAR_MECA(MODELE=MODELE, FACE_IMPO=(_F(GROUP_MA="HAUT", DZ=1.0)))
+
+COEF_DISP = DEFI_FONCTION(NOM_PARA="INST", PROL_DROITE="CONSTANT", VALE=(1.0, 0.0, 2.0, -10.0e-2))
+
+CHA_PRE1 = AFFE_CHAR_MECA(MODELE=MODELE, DDL_IMPO=_F(TOUT="OUI", PRE1=100.0e3))
+
+CHA_PRE2 = AFFE_CHAR_MECA(MODELE=MODELE, DDL_IMPO=_F(TOUT="OUI", PRE2=0.0))
+
+DEPL_INIT = CREA_CHAMP(
+    MAILLAGE=MAILLAGE,
+    OPERATION="AFFE",
+    TYPE_CHAM="NOEU_DEPL_R",
+    AFFE=(
+        _F(
+            TOUT="OUI",
+            NOM_CMP=("DX", "DY", "DZ", "PRE1", "PRE2"),
+            VALE=(0.0, 0.0, 0.0, 100.0e3, 0.0),
+        )
+    ),
+)
+
+### >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Solution (isotropic compression)
+### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+RESU_1 = STAT_NON_LINE(
+    MODELE=MODELE,
+    CHAM_MATER=MATE,
+    EXCIT=(
+        _F(CHARGE=CHA_PRES_LAT),
+        _F(CHARGE=CHA_PRES_AXI),
+        _F(CHARGE=CHA_DISP_SYM),
+        _F(CHARGE=CHA_PRE1),
+        _F(CHARGE=CHA_PRE2),
+    ),
+    COMPORTEMENT=_F(
+        RELATION="KIT_HHM", RELATION_KIT=("Barcelone", "LIQU_GAZ", "HYDR_VGM"), RESI_INTE=1.0e-14
+    ),
+    ETAT_INIT=_F(DEPL=DEPL_INIT),
+    INCREMENT=_F(LIST_INST=DEFLIST, INST_INIT=0.0, INST_FIN=1.0),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    CONVERGENCE=_F(ITER_GLOB_MAXI=10, RESI_GLOB_RELA=1.0e-8),
+    SOLVEUR=_F(METHODE="MUMPS"),
+)
+
+### >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+### Solution (triaxial compression)
+### <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+RESU_2 = STAT_NON_LINE(
+    MODELE=MODELE,
+    CHAM_MATER=MATE,
+    EXCIT=(
+        _F(CHARGE=CHA_PRES_LAT),
+        _F(CHARGE=CHA_DISP_AXI, TYPE_CHARGE="DIDI", FONC_MULT=COEF_DISP),
+        _F(CHARGE=CHA_DISP_SYM),
+        _F(CHARGE=CHA_PRE1),
+        _F(CHARGE=CHA_PRE2),
+    ),
+    ETAT_INIT=_F(EVOL_NOLI=RESU_1),
+    COMPORTEMENT=_F(
+        RELATION="KIT_HHM", RELATION_KIT=("Barcelone", "LIQU_GAZ", "HYDR_VGM"), RESI_INTE=1.0e-14
+    ),
+    INCREMENT=_F(LIST_INST=DEFLIST, INST_INIT=1.0, INST_FIN=2.0),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    CONVERGENCE=_F(ITER_GLOB_MAXI=10, RESI_GLOB_RELA=1.0e-8),
+    SOLVEUR=_F(METHODE="MUMPS"),
+)
+
+### >>>>>>>>>>>>>>>
+### Post-processing
+### <<<<<<<<<<<<<<<
+
+RESU_1 = CALC_CHAMP(
+    reuse=RESU_1,
+    RESULTAT=RESU_1,
+    CONTRAINTE="SIEF_NOEU",
+    DEFORMATION="EPSI_NOEU",
+    VARI_INTERNE="VARI_NOEU",
+)
+
+RESU_2 = CALC_CHAMP(
+    reuse=RESU_2,
+    RESULTAT=RESU_2,
+    CONTRAINTE="SIEF_NOEU",
+    DEFORMATION="EPSI_NOEU",
+    VARI_INTERNE="VARI_NOEU",
+)
+
+### >>>>>
+### Tests
+### <<<<<
+
+TEST_RESU(
+    RESU=_F(
+        INST=1.0,
+        RESULTAT=RESU_1,
+        NOM_CHAM="SIEF_NOEU",
+        GROUP_NO="NO8",
+        NOM_CMP="SIZZ",
+        VALE_CALC=-200000,
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        INST=1.0,
+        RESULTAT=RESU_1,
+        NOM_CHAM="EPSI_NOEU",
+        NOM_CMP="EPXX",
+        GROUP_NO="NO8",
+        VALE_CALC=-0.02042190167564005,
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        INST=2.0,
+        RESULTAT=RESU_2,
+        NOM_CHAM="SIEF_NOEU",
+        GROUP_NO="NO8",
+        NOM_CMP="SIZZ",
+        VALE_CALC=-433762.5637656013,
+    )
+)
+
+TEST_RESU(
+    RESU=_F(
+        INST=2.0,
+        RESULTAT=RESU_2,
+        NOM_CHAM="EPSI_NOEU",
+        NOM_CMP="EPXX",
+        GROUP_NO="NO8",
+        VALE_CALC=-0.0013725675432986909,
+    )
+)
+
+FIN()

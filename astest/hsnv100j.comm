@@ -1,0 +1,263 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: mickael.abbas at edf.fr
+# IDENTIQUE A HSNV100G MAIS AVEC TEST DE AFFE_VARC DANS SIMU_POIN_MAT
+
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"), DEBUG=_F(SDVERI="NON"), IMPR_MACRO="OUI")
+
+# ......................................................................
+# CAS TEST THERMOPLASTICITE ELEMENTAIRE
+# ......................................................................
+# DEFINITION DES CARACTERISTIQUES DU MATERIAU
+#
+
+#
+# DONNEES DE MODELISATION
+#
+
+FCT1 = DEFI_FONCTION(
+    NOM_PARA="EPSI",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+    VALE=(0.200e-2, 400.0, 0.400e-2, 500.0),
+)
+
+#
+
+FCT2 = DEFI_FONCTION(
+    NOM_PARA="EPSI",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+    VALE=(0.100e-2, 200.0, 0.300e-2, 300.0),
+)
+
+#
+
+CTRACB = DEFI_NAPPE(
+    NOM_PARA="TEMP",
+    PROL_DROITE="LINEAIRE",
+    PROL_GAUCHE="LINEAIRE",
+    PARA=(0.0, 50.0),
+    FONCTION=(FCT1, FCT2),
+)
+
+#
+
+MATER = DEFI_MATERIAU(
+    THER=_F(RHO_CP=0.0e-3, LAMBDA=1.0e-3),
+    ELAS=_F(E=200.0e3, NU=0.3, ALPHA=10.0e-6),
+    TRACTION=_F(SIGM=CTRACB),
+)
+
+#
+
+
+TIMPVAR = DEFI_FONCTION(NOM_PARA="INST", NOM_RESU="TEMP", VALE=(0.0e0, 0.0e0, 100.0e0, 100.0e0))
+
+#
+ZERO = DEFI_CONSTANTE(VALE=0.0)
+
+L_INST = DEFI_LIST_REEL(
+    DEBUT=0.0,
+    INTERVALLE=(
+        _F(JUSQU_A=66.666e0, NOMBRE=1),
+        _F(JUSQU_A=80.000e0, NOMBRE=2),
+        _F(JUSQU_A=90.000e0, NOMBRE=2),
+    ),
+)
+
+RESU1 = SIMU_POINT_MAT(
+    INFO=2,
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_TRAC"),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    MATER=MATER,
+    AFFE_VARC=(_F(NOM_VARC="TEMP", VALE_FONC=TIMPVAR, VALE_REF=0.0),),
+    INCREMENT=_F(LIST_INST=L_INST),
+    EPSI_IMPOSE=_F(EPYY=ZERO),
+)
+
+IMPR_TABLE(TABLE=RESU1)
+
+inst1 = 6.66660e01
+inst2 = 7.33330e01
+inst3 = 8.00000e01
+inst4 = 8.50000e01
+inst5 = 9.00000e01
+
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=8.66658000e-04,
+    VALE_REFE=8.6666e-4,
+    NOM_PARA="EPXX",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=66.665999999999997),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-133.332000000,
+    VALE_REFE=-133.333,
+    NOM_PARA="SIYY",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=66.665999999999997),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=1.10000000e-03,
+    VALE_REFE=1.1000000000000001e-3,
+    NOM_PARA="EPXX",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=80.0),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=3.00000000e-04,
+    VALE_REFE=2.9999999999999997e-4,
+    NOM_PARA="V1",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=80.0),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-100.000000000,
+    VALE_REFE=-100.0,
+    NOM_PARA="SIYY",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=80.0),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=1.27500000e-03,
+    VALE_REFE=1.2750000000000001e-3,
+    NOM_PARA="EPXX",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=90.0),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=5.25000000e-04,
+    VALE_REFE=5.2499999999999997e-4,
+    NOM_PARA="V1",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=90.0),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-75.000000000,
+    VALE_REFE=-75.0,
+    NOM_PARA="SIYY",
+    TABLE=RESU1,
+    FILTRE=_F(NOM_PARA="INST", VALE=90.0),
+)
+
+RESU2 = SIMU_POINT_MAT(
+    COMPORTEMENT=_F(RELATION="VMIS_ISOT_TRAC"),
+    NEWTON=_F(MATRICE="TANGENTE", REAC_ITER=1),
+    MATER=MATER,
+    SUPPORT="ELEMENT",
+    AFFE_VARC=(_F(NOM_VARC="TEMP", VALE_FONC=TIMPVAR, VALE_REF=0.0),),
+    INCREMENT=_F(LIST_INST=L_INST),
+    EPSI_IMPOSE=_F(EPYY=ZERO),
+)
+
+IMPR_TABLE(TABLE=RESU2)
+
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=8.66658000e-04,
+    VALE_REFE=8.6666e-4,
+    NOM_PARA="EPXX",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=1),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-133.332000000,
+    VALE_REFE=-133.333,
+    NOM_PARA="SIYY",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=1),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=1.10000000e-03,
+    VALE_REFE=1.1000000000000001e-3,
+    NOM_PARA="EPXX",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=3),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=3.00000000e-04,
+    VALE_REFE=2.9999999999999997e-4,
+    NOM_PARA="V1",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=3),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-100.000000000,
+    VALE_REFE=-100.0,
+    NOM_PARA="SIYY",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=3),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=1.27500000e-03,
+    VALE_REFE=1.2750000000000001e-3,
+    NOM_PARA="EPXX",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=5),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=5.25000000e-04,
+    VALE_REFE=5.2499999999999997e-4,
+    NOM_PARA="V1",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=5),
+)
+
+TEST_TABLE(
+    REFERENCE="ANALYTIQUE",
+    VALE_CALC=-75.000000000,
+    VALE_REFE=-75.0,
+    NOM_PARA="SIYY",
+    TABLE=RESU2,
+    FILTRE=_F(NOM_PARA="NUME_ORDRE", VALE_I=5),
+)
+
+FIN()
+#

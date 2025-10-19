@@ -1,0 +1,173 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# CAS D'UN FOND EN QUART DE CERCLE DEBOUCHANT
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="OUI"))
+
+import aster
+
+M = LIRE_MAILLAGE(FORMAT="MED")
+
+FISS0 = DEFI_FOND_FISS(
+    MAILLAGE=M,
+    SYME="NON",
+    FOND_FISS=_F(GROUP_MA="LFF1"),
+    LEVRE_SUP=_F(GROUP_MA="LEVINFS"),
+    LEVRE_INF=_F(GROUP_MA="LEVINF1"),
+)
+
+import numpy as np
+
+nb_comp_basloc = 9
+basloc = FISS0.getCrackFrontNodeBasis().getValues()
+basloc = np.array(basloc).reshape((len(basloc) // nb_comp_basloc), nb_comp_basloc)[:, 3:]
+index_by_nodename = {M.getNodeName(i): i for i in M.getNodes()}
+lnoff = FISS0.getCrackFrontNodes()
+basloc = basloc[[index_by_nodename[nodename] for nodename in lnoff], :]
+basloc = basloc.reshape((len(basloc), 2, 3))
+norm = np.linalg.norm(basloc, axis=2)
+norm = norm.reshape((len(basloc), 2, 1))
+norm = np.concatenate((norm, norm, norm), axis=2)
+basefond0 = (basloc / norm).flatten()
+
+ndfon = []
+# listes des composantes des vecteurs normaux au plan de la fissure
+vnorX = []
+vnorY = []
+vnorZ = []
+# listes des composantes des vecteurs de direction de propagation de
+# la fissure
+vdirX = []
+vdirY = []
+vdirZ = []
+
+for i in range(0, len(basefond0) // 6):
+    ndfon.append(i + 1)
+    vdirX.append(basefond0[6 * i])
+    vdirY.append(basefond0[6 * i + 1])
+    vdirZ.append(basefond0[6 * i + 2])
+    vnorX.append(basefond0[6 * i + 3])
+    vnorY.append(basefond0[6 * i + 4])
+    vnorZ.append(basefond0[6 * i + 5])
+
+TABL0 = CREA_TABLE(
+    LISTE=(
+        _F(LISTE_I=ndfon, PARA="ND_FOND"),
+        _F(LISTE_R=vnorX, PARA="VNORX"),
+        _F(LISTE_R=vnorY, PARA="VNORY"),
+        _F(LISTE_R=vnorZ, PARA="VNORZ"),
+        _F(LISTE_R=vdirX, PARA="VDIRX"),
+        _F(LISTE_R=vdirY, PARA="VDIRY"),
+        _F(LISTE_R=vdirZ, PARA="VDIRZ"),
+    )
+)
+
+# Calcul des valeurs analytiques des vecteurs de direction de
+# propagation de fissure :
+# Comme la fissure est un quart de cercle ayant pour centre l'origine du repere:
+# les valeurs analytiques des vecteurs de direction de
+# propagation de la fissure sont les coordonnees des noeuds du fond
+
+vdirX_ana = []
+vdirY_ana = []
+vdirZ_ana = []
+
+l_numeros_noeuds_fissure = []
+# Noms des noeuds du fond
+l_noms_noeuds_fissure = FISS0.getCrackFrontNodes()
+
+coords = M.getCoordinates().getValues()
+
+for i in range(0, len(ndfon)):
+    index = index_by_nodename[l_noms_noeuds_fissure[i]]
+    l_numeros_noeuds_fissure.append(index)
+
+    coor = coords[l_numeros_noeuds_fissure[i] * 3 : l_numeros_noeuds_fissure[i] * 3 + 3]
+
+    norme = sqrt(coor[0] ** 2 + coor[1] ** 2 + coor[2] ** 2)
+
+    vdirX_ana.append(coor[0] / norme)
+    vdirY_ana.append(coor[1] / norme)
+    vdirZ_ana.append(coor[2] / norme)
+
+
+for i in range(0, len(ndfon)):
+
+    TEST_TABLE(
+        CRITERE="ABSOLU",
+        REFERENCE="ANALYTIQUE",
+        VALE_CALC=0.00000000e00,
+        VALE_REFE=0.0,
+        NOM_PARA="VNORX",
+        TABLE=TABL0,
+        FILTRE=_F(NOM_PARA="ND_FOND", VALE_I=i + 1),
+    )
+
+    TEST_TABLE(
+        CRITERE="ABSOLU",
+        REFERENCE="ANALYTIQUE",
+        VALE_CALC=0.00000000e00,
+        VALE_REFE=0.0,
+        NOM_PARA="VNORY",
+        TABLE=TABL0,
+        FILTRE=_F(NOM_PARA="ND_FOND", VALE_I=i + 1),
+    )
+
+    TEST_TABLE(
+        CRITERE="ABSOLU",
+        REFERENCE="ANALYTIQUE",
+        VALE_CALC=1.000000000,
+        VALE_REFE=1.0,
+        NOM_PARA="VNORZ",
+        TABLE=TABL0,
+        FILTRE=_F(NOM_PARA="ND_FOND", VALE_I=i + 1),
+    )
+
+    TEST_TABLE(
+        CRITERE="ABSOLU",
+        REFERENCE="ANALYTIQUE",
+        VALE_CALC=vdirX_ana[i],
+        VALE_REFE=vdirX_ana[i],
+        NOM_PARA="VDIRX",
+        TABLE=TABL0,
+        FILTRE=_F(NOM_PARA="ND_FOND", VALE_I=i + 1),
+    )
+
+    TEST_TABLE(
+        CRITERE="ABSOLU",
+        REFERENCE="ANALYTIQUE",
+        VALE_CALC=vdirY_ana[i],
+        VALE_REFE=vdirY_ana[i],
+        NOM_PARA="VDIRY",
+        TABLE=TABL0,
+        FILTRE=_F(NOM_PARA="ND_FOND", VALE_I=i + 1),
+    )
+
+    TEST_TABLE(
+        CRITERE="ABSOLU",
+        REFERENCE="ANALYTIQUE",
+        VALE_CALC=vdirZ_ana[i],
+        VALE_REFE=vdirZ_ana[i],
+        NOM_PARA="VDIRZ",
+        TABLE=TABL0,
+        FILTRE=_F(NOM_PARA="ND_FOND", VALE_I=i + 1),
+    )
+
+FIN()

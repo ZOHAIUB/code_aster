@@ -1,0 +1,78 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+from code_aster.Commands import *
+from code_aster import CA
+
+CA.init("--test", "--continue")
+
+test = CA.TestCase()
+
+# Using Python binding for behaviour
+study = CA.PhysicalProblem(MOMEC2, CHMAT)
+
+# With default values: no initial state, no implex and info=1
+behav = study.computeBehaviourProperty(
+    COMPORTEMENT=(
+        _F(RELATION="ELAS", GROUP_MA="M5"),
+        _F(RELATION="VMIS_CINE_LINE", GROUP_MA=("M1", "M3", "M7", "M8", "M9")),
+    )
+)
+behav = study.getBehaviourProperty()
+# the same all arguments
+study.computeBehaviourProperty(
+    COMPORTEMENT=(
+        _F(RELATION="ELAS", GROUP_MA="M5"),
+        _F(RELATION="VMIS_CINE_LINE", GROUP_MA=("M1", "M3", "M7", "M8", "M9")),
+    ),
+    SIGM_INIT="NON",
+    INFO=1,
+)
+behav = study.getBehaviourProperty()
+behavField = behav.getBehaviourField()
+
+with test.assertRaisesRegex(RuntimeError, "Unexpected value.*COMPORTEMENT"):
+    study.computeBehaviourProperty(COMPORTEMENT="ELAS")
+
+dico_par = U2_2.getAccessParameters()
+test.assertEqual(sorted(dico_par.keys()), ["INST", "NUME_ORDRE"])
+test.assertEqual(dico_par["NUME_ORDRE"], [0, 1, 2])
+test.assertEqual(dico_par["INST"], [60.0, 80.0, 100.0])
+
+test.assertEqual(U2_2.getFieldsOnNodesRealNames(), ["DEPL", "RESI_NOEU", "RESI_RELA_NOEU"])
+test.assertEqual(U2_2.getFieldsOnCellsRealNames(), ["SIEF_ELGA", "VARI_ELGA"])
+
+ranks = dico_par["NUME_ORDRE"]
+rf = U2_2.getField("DEPL", ranks[0])
+sf = rf.toSimpleFieldOnNodes()
+
+values, mask = sf.getValues()
+test.assertAlmostEqual(values[3, 0], 0.314065725792971)
+test.assertEqual(mask[3, 0], True)
+test.assertEqual(sf.getComponents(), ["DX", "DY"])
+test.assertEqual(sf.getNumberOfComponents(), 2)
+test.assertEqual(sf.getNumberOfNodes(), 16)
+test.assertEqual(sf.getComponent(0), "DX")
+
+with test.assertRaisesRegex(RuntimeError, "Out of range"):
+    name = sf.getComponent(5)
+
+test.printSummary()
+
+CA.close()

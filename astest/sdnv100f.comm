@@ -1,0 +1,171 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="NON"))
+# SDVERI='NON' car la verification est trop couteuse en CPU
+
+# Length of beam
+length = 0.2
+
+# Material properties
+young = 2.0e11
+nu = 0.0
+rho = 8000.0
+
+# Speed of sound in steel
+cele = sqrt((young * (1.0 - nu)) / (rho * (1.0 + nu) * (1.0 - 2.0 * nu)))
+
+# Initial displacement
+dispIni = 2.0e-3
+
+# Initial speed
+viteIni = -100.0
+
+# Initial time of contact
+tau0 = 2.0e-3 / abs(viteIni)
+
+# Final time of contact
+tau1 = tau0 + 2.0 * length / cele
+
+# Time step
+DT = 1e-07
+
+# CONDITION DE COURANT = (.005 m)/(5000 m/s) = 1e-6 s
+# UNIQUEMENT SUR LES ELEMENTS ISOPARAMETRIQUES
+# ATTENTION A LA REDUCTION DU PAS DE TEMPS DU A LA PENALISATION DE CHOC
+
+DTC = 0.1 * 1.0e-6
+
+# Mesh
+MAILO = LIRE_MAILLAGE(FORMAT="MED")
+
+MAILL = CREA_MAILLAGE(MAILLAGE=MAILO, CREA_POI1=_F(NOM_GROUP_MA="BASE", GROUP_MA="SBAS"))
+
+MAILL = DEFI_GROUP(reuse=MAILL, MAILLAGE=MAILL, CREA_GROUP_NO=_F(GROUP_MA="BARRE"))
+
+# Model
+MODE = AFFE_MODELE(
+    MAILLAGE=MAILL,
+    AFFE=(
+        _F(GROUP_MA="BARRE", PHENOMENE="MECANIQUE", MODELISATION="3D"),
+        _F(GROUP_MA="BASE", PHENOMENE="MECANIQUE", MODELISATION="DIS_T"),
+    ),
+)
+
+CARA = AFFE_CARA_ELEM(
+    MODELE=MODE,
+    DISCRET=(
+        _F(GROUP_MA="BASE", REPERE="LOCAL", CARA="K_T_D_N", VALE=(0.0, 0.0, 0.0)),
+        _F(GROUP_MA="BASE", REPERE="LOCAL", CARA="M_T_D_N", VALE=(0.0,)),
+    ),
+    ORIENTATION=_F(GROUP_MA="BASE", CARA="VECT_X_Y", VALE=(0.0, 0.0, 1.0, 0.0, 1.0, 0.0)),
+)
+
+# Material
+ACIER = DEFI_MATERIAU(ELAS=_F(E=young, NU=nu, RHO=rho))
+
+MATCHO = DEFI_MATERIAU(DIS_CONTACT=_F(RIGI_NOR=1.0e10, JEU=0.0))
+
+CM = AFFE_MATERIAU(
+    MAILLAGE=MAILL, AFFE=(_F(GROUP_MA="BARRE", MATER=ACIER), _F(GROUP_MA="BASE", MATER=MATCHO))
+)
+
+# Loads
+CH = AFFE_CHAR_MECA(MODELE=MODE, DDL_IMPO=_F(GROUP_MA="BARRE", DX=0.0, DY=0.0))
+
+RAMPE = DEFI_FONCTION(
+    NOM_PARA="INST",
+    PROL_GAUCHE="CONSTANT",
+    PROL_DROITE="CONSTANT",
+    VALE=(0.0, 1.0, 0.0001, 1.0, 0.00010001, 0.0),
+)
+
+# Initial displacement
+CHAMP2 = CREA_CHAMP(
+    TYPE_CHAM="NOEU_DEPL_R",
+    OPERATION="AFFE",
+    MAILLAGE=MAILL,
+    AFFE=_F(GROUP_NO="BARRE", NOM_CMP=("DX", "DY", "DZ"), VALE=(0.0, 0.0, dispIni)),
+)
+
+# Initial speed
+CHAMP1 = CREA_CHAMP(
+    TYPE_CHAM="NOEU_DEPL_R",
+    OPERATION="AFFE",
+    MAILLAGE=MAILL,
+    AFFE=_F(GROUP_NO="BARRE", NOM_CMP=("DX", "DY", "DZ"), VALE=(0.0, 0.0, viteIni)),
+)
+
+# Time step management
+L_INST = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=0.00014, PAS=DT))
+
+# Time step during contact phase
+L_CONT = DEFI_LIST_REEL(DEBUT=tau0, INTERVALLE=_F(JUSQU_A=tau1, PAS=DT))
+
+# Non-linear dynamic (consistent mass matrix)
+U = DYNA_NON_LINE(
+    MODELE=MODE,
+    CHAM_MATER=CM,
+    CARA_ELEM=CARA,
+    MASS_DIAG="NON",
+    EXCIT=_F(CHARGE=CH, FONC_MULT=RAMPE),
+    ETAT_INIT=_F(DEPL=CHAMP2, VITE=CHAMP1),
+    COMPORTEMENT=(_F(RELATION="DIS_CHOC", GROUP_MA="BASE"), _F(RELATION="ELAS", GROUP_MA="BARRE")),
+    INCREMENT=_F(INST_INIT=0.0, LIST_INST=L_INST),
+    SCHEMA_TEMPS=_F(SCHEMA="DIFF_CENT", FORMULATION="ACCELERATION"),
+)
+
+# Post-treatment: energies
+tpost = POST_ELEM(ENER_CIN=_F(TOUT="OUI"), RESULTAT=U)
+
+# Post-treatment: integral of speed during contact
+VITECONT = RECU_FONCTION(RESULTAT=U, NOM_CHAM="VITE", NOM_CMP="DZ", GROUP_NO="N5", TITRE="VITE")
+
+VC = CALC_FONCTION(COMB=_F(FONCTION=VITECONT, COEF=12500.0))
+
+MVC = CALC_FONCTION(INTEGRE=_F(FONCTION=VC))
+
+# Time step management (with CFL condition)
+L_COURA = DEFI_LIST_REEL(DEBUT=0.0, INTERVALLE=_F(JUSQU_A=0.00014, PAS=DTC))
+
+# Non-linear dynamic (lumped mass matrix)
+UDIAG = DYNA_NON_LINE(
+    MODELE=MODE,
+    CHAM_MATER=CM,
+    CARA_ELEM=CARA,
+    MASS_DIAG="OUI",
+    EXCIT=_F(CHARGE=CH, FONC_MULT=RAMPE),
+    ETAT_INIT=_F(DEPL=CHAMP2, VITE=CHAMP1),
+    COMPORTEMENT=(_F(RELATION="DIS_CHOC", GROUP_MA="BASE"), _F(RELATION="ELAS", GROUP_MA="BARRE")),
+    INCREMENT=_F(INST_INIT=0.0, LIST_INST=L_COURA),
+    SCHEMA_TEMPS=_F(SCHEMA="DIFF_CENT", FORMULATION="ACCELERATION"),
+)
+
+# Post-treatment: energies
+tpostDIA = POST_ELEM(ENER_CIN=_F(TOUT="OUI"), RESULTAT=UDIAG)
+
+# Post-treatment: integral of speed during contact
+
+VITEDIAG = RECU_FONCTION(RESULTAT=UDIAG, NOM_CHAM="VITE", NOM_CMP="DZ", GROUP_NO="N5", TITRE="VITE")
+
+VCDIAG = CALC_FONCTION(COMB=_F(FONCTION=VITEDIAG, COEF=12500.0))
+
+MVCDIAG = CALC_FONCTION(INTEGRE=_F(FONCTION=VCDIAG))
+
+FIN()

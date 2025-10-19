@@ -1,0 +1,149 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+from code_aster.Commands import *
+from code_aster import CA
+
+DEBUT(CODE="OUI", IGNORE_ALARM="MODELISA4_6", DEBUG=_F(SDVERI="OUI"))
+
+# ###################################################
+# Maillage
+# ###################################################
+
+MA1 = LIRE_MAILLAGE(FORMAT="MED")
+
+MAILLAGE = CREA_MAILLAGE(
+    MAILLAGE=MA1,
+    CREA_POI1=(
+        _F(NOM_GROUP_MA="POCOUPE1", GROUP_NO="NORPHHAU"),
+        _F(NOM_GROUP_MA="POCOUPE2", GROUP_NO="NORPHBAS"),
+    ),
+)
+
+# ###################################################
+# Definition des modeles sains mecanique et thermique
+# ###################################################
+
+MODMES = AFFE_MODELE(
+    MAILLAGE=MAILLAGE,
+    AFFE=(
+        _F(TOUT="OUI", PHENOMENE="MECANIQUE", MODELISATION="D_PLAN"),
+        _F(GROUP_MA=("POCOUPE1", "POCOUPE2"), PHENOMENE="MECANIQUE", MODELISATION="2D_DIS_T"),
+    ),
+)
+
+MODTHS = AFFE_MODELE(
+    MAILLAGE=MAILLAGE, AFFE=_F(TOUT="OUI", PHENOMENE="THERMIQUE", MODELISATION="PLAN")
+)
+
+# ###################################################
+# Definition des fissures mecanique et thermique
+# ###################################################
+
+a = 10.0
+h = a / 18.0
+
+FISS1 = DEFI_FISS_XFEM(
+    MAILLAGE=MAILLAGE,
+    TYPE_DISCONTINUITE="FISSURE",
+    DEFI_FISS=_F(FORM_FISS="DEMI_DROITE", PFON=(0.25 * a, 0.25 * a, 0.0), DTAN=(1.0, 0.0, 0.0)),
+)
+
+FISS2 = DEFI_FISS_XFEM(
+    MAILLAGE=MAILLAGE,
+    TYPE_DISCONTINUITE="FISSURE",
+    DEFI_FISS=_F(FORM_FISS="DEMI_DROITE", PFON=(0.25 * a, 0.75 * a, 0.0), DTAN=(1.0, 0.0, 0.0)),
+)
+
+FISS3 = DEFI_FISS_XFEM(
+    MAILLAGE=MAILLAGE,
+    TYPE_DISCONTINUITE="FISSURE",
+    DEFI_FISS=_F(FORM_FISS="DEMI_DROITE", PFON=(a - 1.5 * h, 0.5 * h, 0.0), DTAN=(-1.0, 0.0, 0.0)),
+)
+
+# ###################################################
+# Definition des modeles xfem mecanique et thermique
+# -> avec le mot cle FISSURE
+# ###################################################
+
+MODMEX1 = MODI_MODELE_XFEM(MODELE_IN=MODMES, FISSURE=(FISS1, FISS2, FISS3))
+
+MODTHX1 = MODI_MODELE_XFEM(MODELE_IN=MODTHS, FISSURE=(FISS1, FISS2, FISS3))
+
+# MAXF = POST_MAIL_XFEM(MODELE=MODMEX1)
+# IMPR_RESU(FORMAT='MED', RESU=_F(MAILLAGE=MAXF) )
+
+# ###################################################
+# Definition du modele xfem mecanique
+# -> avec le mot cle MODELE_THER
+# ###################################################
+
+MODMEX2 = MODI_MODELE_XFEM(MODELE_IN=MODMES, MODELE_THER=MODTHX1)
+
+# ###################################################
+# Impression du contenu des modeles xfem obtenus :
+# -> meca, avec mot-cle FISSURE     : MODMEX1
+# -> meca, avec mot-cle MODELE_THER : MODMEX2
+# -> ther, avec mot-cle FISSURE     : MODTHX1
+#
+# "Post-traitements" des fichiers obtenus avec IMPR_CO
+
+# On veut comparer que les objets issus de MODI_MODELE_XFEM sont semblables.
+# On filtre les lignes fournies par UTIMSD contenant des valeurs (.VALE/.CELV).
+# On compare la somme de contrôle (SOMMI ou SOMMR).
+
+
+def getVALE(model, debug=False):
+    """Extract relevant lines from UTIMSD about values."""
+    from code_aster.Helpers import LogicalUnitFile
+
+    tmpfile = LogicalUnitFile.new_free()
+    IMPR_CO(CONCEPT=_F(NOM=model), NIVEAU=-1, UNITE=tmpfile.unit, PERMUTATION="NON")
+
+    with open(tmpfile.filename, "r") as fsd:
+        lines = fsd.readlines()
+        vale = []
+        for line in lines:
+            line = line.replace(model.getName(), "obj_name")
+            spl = line.split("|")
+            if len(spl) < 2:
+                continue
+            if ".VALE" in spl[1] or ".CELV" in spl[1]:
+                vale.append(spl[1] + " | " + spl[-1])
+    if debug:
+        print(">>>", model.getName(), "<<<")
+        print("".join(vale))
+    return vale
+
+
+valMEX1 = getVALE(MODMEX1, debug=False)
+valMEX2 = getVALE(MODMEX2, debug=False)
+valTHX1 = getVALE(MODTHX1, debug=False)
+
+test = CA.TestCase()
+
+test.assertEqual(len(valMEX1), len(valMEX2), msg="size of valMEX1/valMEX2")
+test.assertEqual(len(valMEX1), len(valTHX1), msg="size of valMEX1/valTHX1")
+
+test.assertSequenceEqual(valMEX1, valMEX2, msg="valMEX1 vs valMEX2")
+test.assertSequenceEqual(valMEX1, valTHX1, msg="valMEX1 vs valTHX1")
+
+test.printSummary()
+
+FIN()

@@ -1,0 +1,76 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+import os
+import os.path as osp
+from subprocess import call
+
+from code_aster.Commands import *
+
+# person_in_charge: mathieu.courtois@edf.fr
+DEBUT(CODE="OUI", ERREUR=_F(ALARME="EXCEPTION"))
+
+# This testcase checks the import of the commands catalog as done by AsterStudy
+
+# Add a fake module that emulates it runs inside AsterStudy
+os.makedirs("asterstudy/common")
+with open(osp.join("asterstudy/__init__.py"), "w") as _:
+    pass
+with open(osp.join("asterstudy/common/__init__.py"), "w") as _:
+    pass
+os.rename("fort.33", "asterstudy/common/session.py")
+
+with open("test_import.py", "w") as ftest:
+    ftest.write(
+        """
+try:
+    import mpi4py.rc
+    mpi4py.rc.initialize = False
+    import mpi4py.MPI
+except ImportError:
+    pass
+
+import code_aster
+import code_aster.Cata
+import code_aster.Cata.aster_version
+import code_aster.Cata.Commons
+import code_aster.Cata.Syntax
+import code_aster.Cata.SyntaxChecker
+import code_aster.Cata.SyntaxObjects
+import code_aster.Cata.SyntaxUtils
+from code_aster.Cata.Commands import *
+from code_aster.Cata.DataStructure import *
+
+assert hasattr(DataStructure, "getType"), code_aster.Cata.DataStructure.__file__
+"""
+    )
+
+print("=" * 80)
+print("Checking import of code_aster...")
+
+# run externally to not corrupt currently loaded catalog
+iret = call(["python3", "test_import.py"])
+
+print("=" * 80)
+
+tab = CREA_TABLE(LISTE=_F(PARA="EXIT_CODE", LISTE_I=iret))
+
+TEST_TABLE(REFERENCE="ANALYTIQUE", VALE_CALC_I=0, VALE_REFE_I=0, NOM_PARA="EXIT_CODE", TABLE=tab)
+
+FIN()

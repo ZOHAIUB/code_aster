@@ -1,0 +1,129 @@
+# coding=utf-8
+# --------------------------------------------------------------------
+# Copyright (C) 1991 - 2025 - EDF R&D - www.code-aster.org
+# This file is part of code_aster.
+#
+# code_aster is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# code_aster is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with code_aster.  If not, see <http://www.gnu.org/licenses/>.
+# --------------------------------------------------------------------
+
+# person_in_charge: david.haboussa at edf.fr
+#
+DEBUT(CODE="OUI", DEBUG=_F(SDVERI="NON"))
+
+# SDVERI='NON' car la verification est trop couteuse en CPU
+
+# IGNORE_ALARM= car pour RUNGE_KUTTA, RESI_GLOB_RELA=1.E-3 suffit pour une bonne precision
+# comparaison : resi_inte  CPU total (calibre7)   RESU
+#                1.E-4           98s                   OK
+#                1.E-3           51s                   OK
+
+from numpy.linalg import norm
+from numpy import *
+
+# MATERIAU DEFINI POUR LE COMPORTEMENT  DD_CFC. Unites : MPa, mm, N
+
+MU = 80000.0  # MPa
+NU = 0.3
+E = MU * 2 * (1.0 + NU)
+TAU_F = 80.0
+RHO_0 = 1.0e5  # en mm**-2
+RHOREF = 1.0e6  # en mm**-2
+
+N = 20.0
+GAMMA0 = 1.0e-3
+ALPHA = 0.35
+BETA = 2.54e-7  # 2.54 Angstrom
+
+A = 0.13
+B = 0.005
+Y = 2.5e-7  # 2.5 Angstrom
+
+# variable adimensionnee, voir R5.03.11
+
+RHO_0 = RHO_0 * BETA * BETA
+
+ALPHA = 0.0
+
+# pour DD_CFC_IRRA
+# variable adimensionnee, voir R5.03.11
+RHO_LOOPS = 7.4e13 * BETA * BETA
+
+PHI_VOIDS = 1.0e-3
+
+ACIERDDi = DEFI_MATERIAU(
+    ELAS=_F(E=E, NU=NU, ALPHA=0.0),
+    MONO_DD_CFC_IRRA=_F(
+        TAU_F=TAU_F,  # MPa
+        Y=Y,  # 2.5 Angstrom
+        N=N,
+        GAMMA0=GAMMA0,
+        A=A,
+        B=B,
+        RHO_REF=RHOREF,  # en mm**-2
+        ALPHA=ALPHA,
+        BETA=BETA,  # 2.54 Angstrom
+        H1=0.124,
+        H2=0.625,
+        H3=0.137,
+        H4=0.122,
+        H5=0.07,
+        RHO_VOID=1.0e3,
+        PHI_LOOP=5.9e-6,
+        ##ALP_VOID =0.,  #essai pour retrouver la solution sans irradiation (SSND110A)
+        ##ALP_LOOP =0.,  #essai pour retrouver la solution sans irradiation (SSND110A)
+        ALP_VOID=0.0,
+        ALP_LOOP=0.1,
+        RHO_SAT=RHO_LOOPS * 0.0,
+        PHI_SAT=4.0e-2,
+        XI_IRRA=1.0,
+        DZ_IRRA=1.0e7,
+    ),
+)
+
+
+ACIERDD = DEFI_MATERIAU(
+    ELAS=_F(E=E, NU=NU, ALPHA=0.0),
+    MONO_DD_CFC=_F(
+        TAU_F=TAU_F,  # MPa
+        Y=Y,  # 2.5 Angstrom
+        N=N,
+        GAMMA0=GAMMA0,
+        A=A,
+        B=B,
+        RHO_REF=RHOREF,  # en mm**-2
+        ALPHA=ALPHA,
+        BETA=BETA,  # 2.54 Angstrom
+        H1=0.124,
+        H2=0.625,
+        H3=0.137,
+        H4=0.122,
+        H5=0.07,
+    ),
+)
+
+
+# DD_CFC
+COMPORTi = DEFI_COMPOR(
+    MONOCRISTAL=_F(
+        MATER=ACIERDDi, ECOULEMENT="MONO_DD_CFC_IRRA", ELAS="ELAS", FAMI_SYST_GLIS="OCTAEDRIQUE"
+    )
+)
+
+COMPORT = DEFI_COMPOR(
+    MONOCRISTAL=_F(
+        MATER=ACIERDD, ECOULEMENT="MONO_DD_CFC", ELAS="ELAS", FAMI_SYST_GLIS="OCTAEDRIQUE"
+    )
+)
+
+FIN()

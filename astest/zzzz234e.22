@@ -1,0 +1,44 @@
+ TITRE
+JE-01-JUIL-2021 13:04:52                                                        
+ FINSF
+ %
+ COOR_2D
+ N1        0.00000000000000E+00  0.00000000000000E+00
+ N2        1.00000000000000E+00  0.00000000000000E+00
+ FINSF
+ %
+ SEG2    
+ M1       N1       N2      
+ FINSF
+ %
+ GROUP_NO
+ A                       
+ N1      
+ FINSF
+ %
+ GROUP_NO
+ B                       
+ N2      
+ FINSF
+ %
+ GROUP_NO
+ N2                      
+ N2      
+ FINSF
+ %
+ GROUP_NO
+ N1                      
+ N1      
+ FINSF
+ %
+ GROUP_MA
+ TOUT                    
+ M1      
+ FINSF
+ %
+ GROUP_MA
+ M1                      
+ M1      
+ FINSF
+ %
+ FIN

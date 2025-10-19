@@ -1,0 +1,72 @@
+ TITRE
+	rbe3                                                                           
+	SINGLE ELEMENT WITH RBE3                                                       
+ FINSF
+ %
+ COOR_2D
+ N000001   0.00000000000000E+00  0.00000000000000E+00
+ N000002   1.00000000000000E+02  0.00000000000000E+00
+ N000003   1.00000000000000E+02  1.00000000000000E+02
+ N000004   0.00000000000000E+00  1.00000000000000E+02
+ N000005   6.00000000000000E+01  5.00000000000000E+01
+ FINSF
+ %
+ POI1    
+ V000001  N000005 
+ FINSF
+ %
+ QUAD4   
+ E000001  N000001  N000002  N000003  N000004 
+ FINSF
+ %
+ GROUP_NO
+ GNO00001                
+ N000001  N000004 
+ FINSF
+ %
+ GROUP_NO
+ GNO00002                
+ N000005 
+ FINSF
+ %
+ GROUP_NO
+ N000004                 
+ N000004 
+ FINSF
+ %
+ GROUP_NO
+ N000002                 
+ N000002 
+ FINSF
+ %
+ GROUP_NO
+ N000005                 
+ N000005 
+ FINSF
+ %
+ GROUP_NO
+ N000003                 
+ N000003 
+ FINSF
+ %
+ GROUP_NO
+ N000001                 
+ N000001 
+ FINSF
+ %
+ GROUP_MA
+ GMA00001                
+ E000001 
+ FINSF
+ %
+ GROUP_MA
+ GMA00002                
+ E000001 
+ FINSF
+ %
+ GROUP_MA
+ GMA00003                
+ V000001 
+ FINSF
+ %
+ FIN
